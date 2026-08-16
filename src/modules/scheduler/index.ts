@@ -211,8 +211,8 @@ export class SchedulerService {
 
       msg += `\n💪 Chúc toàn thể công ty một ngày làm việc hiệu quả và năng suất!`;
 
-      if (CONFIG.MAIN_GROUP_ID) {
-        await SchedulerService.botInstance.api.sendMessage(CONFIG.MAIN_GROUP_ID, msg, {
+      for (const chatId of CONFIG.NOTIFICATION_CHAT_IDS) {
+        await SchedulerService.botInstance.api.sendMessage(chatId, msg, {
           parse_mode: 'Markdown',
         }).catch(console.error);
       }
@@ -248,8 +248,8 @@ export class SchedulerService {
 
       msg += `\n👉 Gõ \`/all_tasks\` hoặc \`/stats\` để xem chi tiết từng công việc.`;
 
-      if (CONFIG.MAIN_GROUP_ID) {
-        await SchedulerService.botInstance.api.sendMessage(CONFIG.MAIN_GROUP_ID, msg, {
+      for (const chatId of CONFIG.NOTIFICATION_CHAT_IDS) {
+        await SchedulerService.botInstance.api.sendMessage(chatId, msg, {
           parse_mode: 'Markdown',
         }).catch(console.error);
       }

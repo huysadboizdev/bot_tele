@@ -17,7 +17,11 @@ export const CONFIG = {
     .map(id => id.trim())
     .filter(Boolean)
     .map(Number),
-  MAIN_GROUP_ID: process.env.MAIN_GROUP_ID || '',
+  MAIN_GROUP_ID: (process.env.MAIN_GROUP_ID || '').split(',')[0]?.trim() || '',
+  NOTIFICATION_CHAT_IDS: (process.env.MAIN_GROUP_ID || '')
+    .split(',')
+    .map(id => id.trim())
+    .filter(Boolean),
   TIMEZONE: process.env.TIMEZONE || 'Asia/Ho_Chi_Minh',
   DATABASE_PATH: process.env.DATABASE_PATH || path.join(dataDir, 'company_bot.sqlite'),
 };

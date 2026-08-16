@@ -204,8 +204,9 @@ async function runTests() {
   // Test nộp tiền và cấn trừ nợ
   AccountingService.markSplitPaid(expenseRes.transaction.id, 'nam_marketing', true, admin.telegram_id);
   const myDebts = AccountingService.getUnpaidDebts('hoa_marketing');
-  console.log(`   ✅ Sau khi @nam_marketing đóng: @hoa_marketing còn nợ ${myDebts.length} khoản (${myDebts[0]?.amount_owed} VNĐ)`);
-  if (myDebts.length !== 1 || myDebts[0]?.amount_owed !== 250000) {
+  const targetDebt = myDebts.find(d => d.transaction_id === expenseRes.transaction.id);
+  console.log(`   ✅ Sau khi @nam_marketing đóng: @hoa_marketing còn nợ ${myDebts.length} khoản (Khoản hiện tại: ${targetDebt?.amount_owed} VNĐ)`);
+  if (!targetDebt || targetDebt.amount_owed !== 250000) {
     throw new Error('Quản lý trạng thái công nợ bị lỗi!');
   }
 

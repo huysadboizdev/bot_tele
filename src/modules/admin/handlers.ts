@@ -775,15 +775,18 @@ export class AdminHandlers {
     announceMsg += `⚠️ _Đề nghị toàn thể nhân sự chú ý theo dõi và thực hiện nghiêm túc!_`;
 
     let sentCount = 0;
+    const currentChatId = ctx.chat?.id.toString();
 
     // Gửi vào nhóm hiện tại
     await ctx.reply(announceMsg, { parse_mode: 'Markdown' });
     sentCount++;
 
-    // Nếu có cấu hình MAIN_GROUP_ID và khác nhóm hiện tại -> Gửi thêm vào Main Group
-    if (CONFIG.MAIN_GROUP_ID && ctx.chat?.id.toString() !== CONFIG.MAIN_GROUP_ID) {
-      await ctx.api.sendMessage(CONFIG.MAIN_GROUP_ID, announceMsg, { parse_mode: 'Markdown' }).catch(console.error);
-      sentCount++;
+    // Gửi đến tất cả các kênh & nhóm trong danh sách cấu hình
+    for (const chatId of CONFIG.NOTIFICATION_CHAT_IDS) {
+      if (chatId !== currentChatId) {
+        await ctx.api.sendMessage(chatId, announceMsg, { parse_mode: 'Markdown' }).catch(console.error);
+        sentCount++;
+      }
     }
 
     await ctx.reply(`✅ Đã phát thông báo thành công đến ${sentCount} kênh/nhóm!`);
