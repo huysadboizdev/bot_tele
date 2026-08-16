@@ -3,9 +3,22 @@ import { UserService } from '../users/service';
 import { DepartmentService } from '../departments/service';
 import { TaskService } from './service';
 import { TaskParser } from '../parser';
-import { formatTaskMessage, getTaskKeyboard } from './keyboards';
+import {
+  formatTaskMessage,
+  getTaskKeyboard,
+  getExtensionOptionsKeyboard,
+} from './keyboards';
+
+export interface PendingExtensionState {
+  taskId: number;
+  newDeadline?: string;
+  isCustom?: boolean;
+}
 
 export class TaskHandlers {
+  // Lưu trạng thái chờ người dùng nhập lý do gia hạn hoặc hạn chót mới
+  public static pendingExtensions = new Map<number, PendingExtensionState>();
+
   /**
    * /task @username <nội dung> [hạn: YYYY-MM-DD HH:mm]
    */
@@ -13,7 +26,6 @@ export class TaskHandlers {
     const senderId = ctx.from?.id;
     if (!senderId) return;
 
-    // Đăng ký/cập nhật thông tin người gửi
     UserService.upsertUser(senderId, ctx.from.username, ctx.from.first_name);
 
     if (!UserService.isAdmin(senderId)) {
@@ -49,7 +61,6 @@ export class TaskHandlers {
       groupChatId: ctx.chat?.id.toString(),
     });
 
-    // Tag tên người nhận
     const tagString = `@${parsed.targetRaw}`;
     const messageText = `🔔 ${tagString} Bạn có công việc mới được giao!\n\n` + formatTaskMessage(task);
 
@@ -88,7 +99,8 @@ export class TaskHandlers {
         '👥 **Hướng dẫn giao việc theo phòng ban:**\n' +
         '👉 Cú pháp: `/task_dept <tên_phòng> <nội dung> [hạn: YYYY-MM-DD HH:mm]`\n' +
         '💡 Ví dụ: `/task_dept marketing Thiết kế banner sự kiện tuần sau hạn: 17h`\n\n' +
-        `🏢 **Danh sách phòng ban hiện có:**\n${deptList}`,
+        `🏢 **Danh sách phòng ban hiện có:**\n${deptList || '_Chưa có phòng ban nào_'}\n\n` +
+        '👉 Dùng `/add_dept <mã> <tên>` để tạo phòng ban.',
         { parse_mode: 'Markdown', reply_to_message_id: ctx.message?.message_id }
       );
       return;
@@ -98,21 +110,11 @@ export class TaskHandlers {
     if (!dept) {
       await ctx.reply(
         `❌ Không tìm thấy phòng ban **"${parsed.targetRaw}"**.\n` +
-        'Gõ `/departments` để xem danh sách phòng ban chính xác.',
-        { parse_mode: 'Markdown', reply_to_message_id: ctx.message?.message_id }
+        `Gõ \`/departments\` để xem danh sách phòng ban hoặc \`/add_dept\` để tạo mới.`,
+        { reply_to_message_id: ctx.message?.message_id }
       );
       return;
     }
-
-    // Lấy tất cả thành viên trong phòng ban để tag
-    const members = UserService.getByDepartment(dept.id);
-    const tagList = members
-      .map(m => m.username ? `@${m.username}` : m.full_name)
-      .filter(Boolean);
-
-    const tagHeader = tagList.length > 0
-      ? `📢 Thông báo đến phòng **${dept.name}** (${tagList.join(' ')}):`
-      : `📢 Thông báo đến phòng **${dept.name}**:`;
 
     const task = TaskService.create({
       title: parsed.title,
@@ -124,7 +126,16 @@ export class TaskHandlers {
       groupChatId: ctx.chat?.id.toString(),
     });
 
-    const messageText = `${tagHeader}\n\n` + formatTaskMessage(task);
+    const members = UserService.getByDepartment(dept.id);
+    let tagString = '';
+    if (members.length > 0) {
+      const tags = members.map(m => (m.username ? `@${m.username}` : m.full_name)).join(' ');
+      tagString = `📢 **Mời các thành viên nhận việc:** ${tags}\n\n`;
+    } else {
+      tagString = `ℹ️ _Phòng ${dept.name} hiện chưa có nhân viên nào. Gõ /set_dept để gán nhân sự._\n\n`;
+    }
+
+    const messageText = `🏢 **CÔNG VIỆC PHÒNG ${dept.name.toUpperCase()}**\n\n` + tagString + formatTaskMessage(task);
 
     const sentMsg = await ctx.reply(messageText, {
       parse_mode: 'Markdown',
@@ -265,7 +276,6 @@ export class TaskHandlers {
       return;
     }
 
-    // Phân tích deadline & priority nếu có trong nội dung mới
     let newPriority = task.priority;
     let newDeadline = task.deadline;
     let cleanTitle = rawContent;
@@ -338,14 +348,19 @@ export class TaskHandlers {
   }
 
   /**
-   * Xử lý khi bấm nút nhận việc, hoàn thành, hủy
+   * Xử lý khi bấm nút nhận việc, hoàn thành, hủy, điểm danh hết hạn, gia hạn
    */
   public static async handleCallback(ctx: Context) {
     const callbackData = ctx.callbackQuery?.data;
     const userId = ctx.from?.id;
     if (!callbackData || !userId) return;
 
-    const [action, subAction, rawTaskId] = callbackData.split(':');
+    const parts = callbackData.split(':');
+    const action = parts[0];
+    const subAction = parts[1];
+    const rawTaskId = parts[2];
+    const extraParam = parts[3];
+
     if (action !== 'task') return;
 
     const taskId = Number(rawTaskId);
@@ -377,7 +392,7 @@ export class TaskHandlers {
     }
 
     // 2. Báo cáo hoàn thành (Complete)
-    else if (subAction === 'complete') {
+    else if (subAction === 'complete' || subAction === 'overdue_done') {
       if (task.status === 'COMPLETED') {
         await ctx.answerCallbackQuery({ text: 'Công việc đã được hoàn thành trước đó.' });
         return;
@@ -386,7 +401,7 @@ export class TaskHandlers {
       const updated = TaskService.updateStatus(taskId, 'COMPLETED', userId, `Hoàn thành bởi ${userName}`);
       if (updated) {
         await ctx.answerCallbackQuery({ text: '🎉 Chúc mừng! Bạn đã hoàn thành công việc!' });
-        const updatedMsg = formatTaskMessage(updated, `🎉 ${userName} đã báo cáo hoàn thành lúc ${new Date().toLocaleTimeString('vi-VN')}`);
+        const updatedMsg = formatTaskMessage(updated, `🎉 ${userName} đã báo cáo HOÀN THÀNH lúc ${new Date().toLocaleTimeString('vi-VN')}`);
         await ctx.editMessageText(updatedMsg, {
           parse_mode: 'Markdown',
           reply_markup: getTaskKeyboard(updated),
@@ -394,7 +409,58 @@ export class TaskHandlers {
       }
     }
 
-    // 3. Hủy công việc (Cancel)
+    // 3. Khi bấm [Chưa Xong] ở thông báo hết hạn -> Hiện menu chọn gia hạn
+    else if (subAction === 'overdue_pending') {
+      await ctx.answerCallbackQuery();
+      await ctx.reply(
+        `⏳ **GIA HẠN CÔNG VIỆC #${taskId}: "${task.title}"**\n\n` +
+        `👉 Vui lòng chọn thời gian bạn muốn gia hạn thêm:`,
+        {
+          parse_mode: 'Markdown',
+          reply_markup: getExtensionOptionsKeyboard(taskId),
+        }
+      );
+    }
+
+    // 4. Chọn mức gia hạn nhanh (+2h, +4h, +1d, +2d)
+    else if (subAction === 'ext_opt') {
+      const duration = extraParam as '2h' | '4h' | '1d' | '2d';
+      const newDeadline = TaskHandlers.calculateFutureTime(duration);
+
+      TaskHandlers.pendingExtensions.set(userId, {
+        taskId,
+        newDeadline,
+        isCustom: false,
+      });
+
+      await ctx.answerCallbackQuery({ text: `Đã chọn gia hạn +${duration}` });
+      await ctx.reply(
+        `⏱️ **GIA HẠN TASK #${taskId} ĐẾN: \`${newDeadline}\`**\n\n` +
+        `👉 Vui lòng gửi một tin nhắn ngắn nêu **LÝ DO CHƯA XONG** để hoàn tất gia hạn:\n` +
+        `_(Ví dụ: Đang đợi duyệt file / Cần bổ sung tài liệu)_`,
+        { parse_mode: 'Markdown' }
+      );
+    }
+
+    // 5. Tự nhập hạn & lý do
+    else if (subAction === 'ext_custom') {
+      TaskHandlers.pendingExtensions.set(userId, {
+        taskId,
+        isCustom: true,
+      });
+
+      await ctx.answerCallbackQuery();
+      await ctx.reply(
+        `✍️ **TỰ NHẬP HẠN MỚI & LÝ DO CHO TASK #${taskId}:**\n\n` +
+        `👉 Vui lòng gửi tin nhắn theo cú pháp: \`[Thời gian mới] - [Lý do]\`\n` +
+        `💡 Ví dụ:\n` +
+        `• \`mai 12h - Đang chờ số liệu đối tác\`\n` +
+        `• \`2026-08-25 18:00 - Cần thêm thời gian kiểm thử phần mềm\``,
+        { parse_mode: 'Markdown' }
+      );
+    }
+
+    // 6. Hủy công việc (Cancel)
     else if (subAction === 'cancel') {
       const isAdmin = UserService.isAdmin(userId);
       const isAssigner = task.assigned_by === userId;
@@ -415,7 +481,7 @@ export class TaskHandlers {
       }
     }
 
-    // 4. Báo cáo tiến độ (Progress)
+    // 7. Báo cáo tiến độ (Progress)
     else if (subAction === 'progress') {
       await ctx.answerCallbackQuery({ 
         text: `📌 Để báo cáo tiến độ, bạn có thể reply trực tiếp vào tin nhắn này kèm nội dung cập nhật.`,
@@ -423,12 +489,91 @@ export class TaskHandlers {
       });
     }
 
-    // 5. Xem chi tiết (Detail)
+    // 8. Xem chi tiết (Detail)
     else if (subAction === 'detail') {
       await ctx.answerCallbackQuery({
         text: `Chi tiết task #${task.id}: ${task.title}\nTrạng thái: ${task.status}`,
         show_alert: true
       });
     }
+  }
+
+  /**
+   * Bắt tin nhắn văn bản khi người dùng đang trong trạng thái nhập lý do gia hạn
+   */
+  public static async handleTextMessage(ctx: Context): Promise<boolean> {
+    const userId = ctx.from?.id;
+    const text = ctx.message?.text?.trim();
+    if (!userId || !text) return false;
+
+    // Bỏ qua nếu là lệnh bắt đầu bằng dấu /
+    if (text.startsWith('/')) return false;
+
+    const pending = TaskHandlers.pendingExtensions.get(userId);
+    if (!pending) return false;
+
+    const task = TaskService.getById(pending.taskId);
+    if (!task) {
+      TaskHandlers.pendingExtensions.delete(userId);
+      return false;
+    }
+
+    let targetDeadline = pending.newDeadline || '';
+    let reason = text;
+
+    if (pending.isCustom) {
+      // Tách theo dấu gạch ngang "-"
+      if (text.includes('-')) {
+        const parts = text.split('-');
+        const timePart = parts[0].trim();
+        reason = parts.slice(1).join('-').trim();
+        targetDeadline = TaskParser.standardizeDeadline(timePart);
+      } else {
+        targetDeadline = TaskParser.standardizeDeadline(text);
+        reason = 'Chưa kịp hoàn thành';
+      }
+    }
+
+    if (!targetDeadline) {
+      targetDeadline = TaskHandlers.calculateFutureTime('2h');
+    }
+
+    const updated = TaskService.extendDeadline(pending.taskId, targetDeadline, reason, userId);
+    TaskHandlers.pendingExtensions.delete(userId);
+
+    const userName = ctx.from.username ? `@${ctx.from.username}` : ctx.from.first_name;
+
+    let responseMsg = `✅ **ĐÃ GIA HẠN CÔNG VIỆC #${task.id} THÀNH CÔNG!**\n\n`;
+    responseMsg += `📌 **Tiêu đề:** **${task.title}**\n`;
+    responseMsg += `👤 **Người thực hiện:** ${userName}\n`;
+    responseMsg += `⏰ **Hạn chót mới:** \`${targetDeadline}\` (Gia hạn lần ${task.extension_count + 1})\n`;
+    responseMsg += `📝 **Lý do:** _${reason}_\n\n`;
+    responseMsg += `🔔 _Hệ thống sẽ tự động theo dõi và tiếp tục nhắc nhở theo hạn mới!_`;
+
+    await ctx.reply(responseMsg, {
+      parse_mode: 'Markdown',
+      reply_markup: updated ? getTaskKeyboard(updated) : undefined,
+    });
+
+    return true;
+  }
+
+  public static calculateFutureTime(duration: '2h' | '4h' | '1d' | '2d'): string {
+    const now = new Date();
+    let addMs = 0;
+    if (duration === '2h') addMs = 2 * 3600 * 1000;
+    else if (duration === '4h') addMs = 4 * 3600 * 1000;
+    else if (duration === '1d') addMs = 24 * 3600 * 1000;
+    else if (duration === '2d') addMs = 48 * 3600 * 1000;
+
+    const target = new Date(now.getTime() + addMs);
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    const YYYY = target.getFullYear();
+    const MM = pad(target.getMonth() + 1);
+    const DD = pad(target.getDate());
+    const HH = pad(target.getHours());
+    const mm = pad(target.getMinutes());
+    const ss = '00';
+    return `${YYYY}-${MM}-${DD} ${HH}:${mm}:${ss}`;
   }
 }

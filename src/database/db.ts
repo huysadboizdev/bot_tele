@@ -18,8 +18,21 @@ export class Database {
   private static initTables() {
     if (!Database.instance) return;
     
-    // Khởi tạo các bảng rỗng sạch sẽ, không tự động thêm dữ liệu mẫu
+    // Khởi tạo các bảng rỗng sạch sẽ
     Database.instance.exec(CREATE_TABLES_SQL);
+
+    // Tự động nâng cấp các cột mới nếu database đã tồn tại từ phiên bản trước
+    try {
+      Database.instance.exec('ALTER TABLE tasks ADD COLUMN overdue_prompted INTEGER DEFAULT 0;');
+    } catch (_) {}
+
+    try {
+      Database.instance.exec('ALTER TABLE tasks ADD COLUMN extension_count INTEGER DEFAULT 0;');
+    } catch (_) {}
+
+    try {
+      Database.instance.exec('ALTER TABLE tasks ADD COLUMN extension_reason TEXT;');
+    } catch (_) {}
   }
 
   public static close() {

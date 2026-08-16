@@ -34,6 +34,9 @@ CREATE TABLE IF NOT EXISTS tasks (
   deadline TEXT, -- Hạn chót định dạng 'YYYY-MM-DD HH:mm:ss'
   reminded_24h INTEGER DEFAULT 0,
   reminded_2h INTEGER DEFAULT 0,
+  overdue_prompted INTEGER DEFAULT 0, -- 1 nếu đã gửi thông báo hỏi kết quả hết hạn
+  extension_count INTEGER DEFAULT 0, -- Số lần xin gia hạn
+  extension_reason TEXT, -- Lý do xin gia hạn gần nhất
   created_at TEXT DEFAULT (datetime('now', 'localtime')),
   updated_at TEXT DEFAULT (datetime('now', 'localtime')),
   completed_at TEXT,

@@ -4,7 +4,12 @@ import { TaskService } from '../tasks/service';
 import { MeetingService } from '../meetings/service';
 import { UserService } from '../users/service';
 import { CONFIG } from '../../config/env';
-import { formatTaskMessage, getTaskKeyboard } from '../tasks/keyboards';
+import {
+  formatTaskMessage,
+  getTaskKeyboard,
+  formatOverduePromptMessage,
+  getOverdueCheckKeyboard,
+} from '../tasks/keyboards';
 import { formatMeetingMessage, getMeetingKeyboard } from '../meetings/keyboards';
 
 export class SchedulerService {
@@ -15,9 +20,10 @@ export class SchedulerService {
 
     console.log('⏰ Khởi động hệ thống lập lịch nhắc việc & lịch họp 24/7 (Timezone: ' + CONFIG.TIMEZONE + ')...');
 
-    // 1. Quét deadline công việc & lịch họp mỗi 2 phút
+    // 1. Quét deadline công việc, kiểm tra hết hạn & lịch họp mỗi 2 phút
     cron.schedule('*/2 * * * *', () => {
       SchedulerService.checkDeadlines();
+      SchedulerService.checkOverdueTasks();
       SchedulerService.checkMeetingReminders();
     }, {
       timezone: CONFIG.TIMEZONE
@@ -39,7 +45,7 @@ export class SchedulerService {
   }
 
   /**
-   * Quét kiểm tra deadline của các task
+   * Quét kiểm tra deadline của các task (Nhắc trước 24h & trước 2h)
    */
   public static async checkDeadlines() {
     if (!SchedulerService.botInstance) return;
@@ -92,6 +98,37 @@ export class SchedulerService {
       }
     } catch (error) {
       console.error('Error during deadline check:', error);
+    }
+  }
+
+  /**
+   * Quét kiểm tra các task ĐÃ HẾT HẠN để gửi câu hỏi: [Đã Xong] hay [Chưa Xong]
+   */
+  public static async checkOverdueTasks() {
+    if (!SchedulerService.botInstance) return;
+
+    try {
+      const overdueTasks = TaskService.getTasksDueForOverduePrompt();
+
+      for (const task of overdueTasks) {
+        const targetChatId = task.group_chat_id || task.assigned_to?.toString() || CONFIG.MAIN_GROUP_ID;
+        if (!targetChatId) continue;
+
+        const tag = task.assignee_username 
+          ? `@${task.assignee_username}` 
+          : (task.department_name ? `Phòng ${task.department_name}` : 'Nhân sự phụ trách');
+
+        const msg = `🔔 ${tag} ơi!\n\n` + formatOverduePromptMessage(task);
+
+        await SchedulerService.botInstance.api.sendMessage(targetChatId, msg, {
+          parse_mode: 'Markdown',
+          reply_markup: getOverdueCheckKeyboard(task.id),
+        }).catch(console.error);
+
+        TaskService.markOverduePrompted(task.id);
+      }
+    } catch (error) {
+      console.error('Error during overdue prompt check:', error);
     }
   }
 

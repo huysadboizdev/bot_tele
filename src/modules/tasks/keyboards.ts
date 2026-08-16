@@ -21,6 +21,51 @@ export function getTaskKeyboard(task: Task): InlineKeyboard {
   return keyboard;
 }
 
+export function getOverdueCheckKeyboard(taskId: number): InlineKeyboard {
+  return new InlineKeyboard()
+    .text('✅ Đã Xong', `task:overdue_done:${taskId}`)
+    .text('⏳ Chưa Xong', `task:overdue_pending:${taskId}`);
+}
+
+export function getExtensionOptionsKeyboard(taskId: number): InlineKeyboard {
+  return new InlineKeyboard()
+    .text('⏱️ +2 Tiếng', `task:ext_opt:${taskId}:2h`)
+    .text('⏱️ +4 Tiếng', `task:ext_opt:${taskId}:4h`)
+    .row()
+    .text('📅 +1 Ngày', `task:ext_opt:${taskId}:1d`)
+    .text('📅 +2 Ngày', `task:ext_opt:${taskId}:2d`)
+    .row()
+    .text('✍️ Tự nhập hạn & lý do', `task:ext_custom:${taskId}`);
+}
+
+export function formatOverduePromptMessage(task: Task): string {
+  let targetDisplay = '';
+  if (task.assignee_username) {
+    targetDisplay = `@${task.assignee_username} (${task.assignee_name})`;
+  } else if (task.assignee_name) {
+    targetDisplay = `${task.assignee_name}`;
+  } else if (task.department_name) {
+    targetDisplay = `👥 Toàn bộ [Phòng ${task.department_name}]`;
+  } else {
+    targetDisplay = 'Chưa chỉ định';
+  }
+
+  let msg = `⏰ **THÔNG BÁO HẾT HẠN CÔNG VIỆC #${task.id}** ⏰\n\n`;
+  msg += `📌 **Tiêu đề:** **${task.title}**\n`;
+  if (task.description) {
+    msg += `📝 **Nội dung:** ${task.description}\n`;
+  }
+  msg += `🎯 **Người phụ trách:** ${targetDisplay}\n`;
+  msg += `⏳ **Hạn chót:** \`${task.deadline}\`\n`;
+
+  if (task.extension_count > 0) {
+    msg += `🔄 **Đã xin gia hạn:** ${task.extension_count} lần\n`;
+  }
+
+  msg += `\n👉 **Vui lòng xác nhận kết quả thực hiện:**`;
+  return msg;
+}
+
 export function formatTaskMessage(task: Task, extraNote?: string): string {
   const statusEmoji = {
     PENDING: '⏳ Đang chờ nhận việc',
@@ -62,6 +107,10 @@ export function formatTaskMessage(task: Task, extraNote?: string): string {
 
   if (task.deadline) {
     msg += `⏰ **Hạn chót:** \`${task.deadline}\`\n`;
+  }
+
+  if (task.extension_count > 0) {
+    msg += `🔄 **Gia hạn:** ${task.extension_count} lần (Lý do: _${task.extension_reason || 'n/a'}_)\n`;
   }
 
   if (task.completed_at) {

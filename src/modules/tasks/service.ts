@@ -14,6 +14,9 @@ export interface Task {
   deadline: string | null;
   reminded_24h: number;
   reminded_2h: number;
+  overdue_prompted: number;
+  extension_count: number;
+  extension_reason: string | null;
   created_at: string;
   updated_at: string;
   completed_at: string | null;
@@ -48,7 +51,7 @@ export class TaskService {
     `);
 
     const result = stmt.run(
-      dto.title.trim(),
+      dto.title,
       dto.description || null,
       dto.assignedBy,
       dto.assignedTo || null,
@@ -64,7 +67,7 @@ export class TaskService {
     // Ghi log tạo task
     const logStmt = db.prepare(`
       INSERT INTO task_logs (task_id, user_id, action, note)
-      VALUES (?, ?, 'CREATED', 'Khởi tạo công việc')
+      VALUES (?, ?, 'CREATED', 'Tạo công việc mới')
     `);
     logStmt.run(taskId, dto.assignedBy);
 
@@ -90,19 +93,66 @@ export class TaskService {
     return (query.get(id) as unknown as Task) || null;
   }
 
-  public static updateMessageId(taskId: number, messageId: number, groupChatId?: string): void {
+  public static getByUser(userId: number, status?: string): Task[] {
     const db = Database.getDb();
-    const stmt = db.prepare(`
-      UPDATE tasks 
-      SET message_id = ?, group_chat_id = COALESCE(?, group_chat_id)
-      WHERE id = ?
-    `);
-    stmt.run(messageId, groupChatId || null, taskId);
+    let sql = `
+      SELECT 
+        t.*,
+        u1.full_name as assigner_name,
+        u1.username as assigner_username,
+        u2.full_name as assignee_name,
+        u2.username as assignee_username,
+        d.name as department_name
+      FROM tasks t
+      LEFT JOIN users u1 ON t.assigned_by = u1.telegram_id
+      LEFT JOIN users u2 ON t.assigned_to = u2.telegram_id
+      LEFT JOIN departments d ON t.department_id = d.id
+      WHERE (t.assigned_to = ? OR t.department_id IN (SELECT department_id FROM users WHERE telegram_id = ?))
+    `;
+
+    if (status) {
+      sql += ' AND t.status = ?';
+      sql += ' ORDER BY t.created_at DESC';
+      const query = db.prepare(sql);
+      return query.all(userId, userId, status) as unknown as Task[];
+    } else {
+      sql += " AND t.status IN ('PENDING', 'IN_PROGRESS')";
+      sql += ' ORDER BY t.created_at DESC';
+      const query = db.prepare(sql);
+      return query.all(userId, userId) as unknown as Task[];
+    }
+  }
+
+  public static getAll(status?: string, limit: number = 50): Task[] {
+    const db = Database.getDb();
+    let sql = `
+      SELECT 
+        t.*,
+        u1.full_name as assigner_name,
+        u1.username as assigner_username,
+        u2.full_name as assignee_name,
+        u2.username as assignee_username,
+        d.name as department_name
+      FROM tasks t
+      LEFT JOIN users u1 ON t.assigned_by = u1.telegram_id
+      LEFT JOIN users u2 ON t.assigned_to = u2.telegram_id
+      LEFT JOIN departments d ON t.department_id = d.id
+    `;
+
+    if (status) {
+      sql += ' WHERE t.status = ? ORDER BY t.created_at DESC LIMIT ?';
+      const query = db.prepare(sql);
+      return query.all(status, limit) as unknown as Task[];
+    } else {
+      sql += ' ORDER BY t.created_at DESC LIMIT ?';
+      const query = db.prepare(sql);
+      return query.all(limit) as unknown as Task[];
+    }
   }
 
   public static updateStatus(
     taskId: number,
-    status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED',
+    newStatus: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED',
     userId: number,
     note?: string
   ): Task | null {
@@ -110,101 +160,100 @@ export class TaskService {
     const task = TaskService.getById(taskId);
     if (!task) return null;
 
-    let completedAt = task.completed_at;
-    let assignedTo = task.assigned_to;
-
-    // Nếu task phòng ban mà có người bấm nhận việc -> gán đích danh cho người đó
-    if (status === 'IN_PROGRESS' && !assignedTo) {
-      assignedTo = userId;
-    }
-
-    if (status === 'COMPLETED') {
+    let completedAt: string | null = null;
+    if (newStatus === 'COMPLETED') {
       completedAt = new Date().toISOString();
     }
 
     const stmt = db.prepare(`
       UPDATE tasks 
       SET status = ?, 
-          assigned_to = ?,
-          completed_at = ?,
+          completed_at = COALESCE(?, completed_at),
+          assigned_to = CASE WHEN assigned_to IS NULL AND ? = 'IN_PROGRESS' THEN ? ELSE assigned_to END,
           updated_at = datetime('now', 'localtime')
       WHERE id = ?
     `);
-    stmt.run(status, assignedTo, completedAt, taskId);
+    stmt.run(newStatus, completedAt, newStatus, userId, taskId);
 
-    // Ghi log
+    // Ghi nhật ký
+    const logActionMap: Record<string, string> = {
+      IN_PROGRESS: 'ACCEPTED',
+      COMPLETED: 'COMPLETED',
+      CANCELLED: 'CANCELLED',
+      PENDING: 'RESET',
+    };
+
+    const action = logActionMap[newStatus] || 'UPDATED';
     const logStmt = db.prepare(`
       INSERT INTO task_logs (task_id, user_id, action, note)
       VALUES (?, ?, ?, ?)
     `);
-    logStmt.run(taskId, userId, status, note || null);
+    logStmt.run(taskId, userId, action, note || null);
 
     return TaskService.getById(taskId);
   }
 
-  public static getByUser(telegramId: number, status?: string): Task[] {
+  public static setMessageId(taskId: number, messageId: number) {
     const db = Database.getDb();
-    let sql = `
-      SELECT 
-        t.*,
-        u1.full_name as assigner_name,
-        u1.username as assigner_username,
-        u2.full_name as assignee_name,
-        u2.username as assignee_username,
-        d.name as department_name
-      FROM tasks t
-      LEFT JOIN users u1 ON t.assigned_by = u1.telegram_id
-      LEFT JOIN users u2 ON t.assigned_to = u2.telegram_id
-      LEFT JOIN departments d ON t.department_id = d.id
-      WHERE (t.assigned_to = ? OR (t.department_id IS NOT NULL AND t.department_id = (SELECT department_id FROM users WHERE telegram_id = ?)))
-    `;
-    const params: (string | number | null)[] = [telegramId, telegramId];
-
-    if (status) {
-      sql += ` AND t.status = ?`;
-      params.push(status);
-    } else {
-      sql += ` AND t.status != 'CANCELLED'`;
-    }
-
-    sql += ` ORDER BY t.deadline ASC NULLS LAST, t.created_at DESC`;
-
-    const query = db.prepare(sql);
-    return query.all(...params) as unknown as Task[];
+    const stmt = db.prepare('UPDATE tasks SET message_id = ? WHERE id = ?');
+    stmt.run(messageId, taskId);
   }
 
-  public static getAll(status?: string, limit = 20): Task[] {
+  public static updateMessageId(taskId: number, messageId: number, groupChatId?: string) {
     const db = Database.getDb();
-    let sql = `
-      SELECT 
-        t.*,
-        u1.full_name as assigner_name,
-        u1.username as assigner_username,
-        u2.full_name as assignee_name,
-        u2.username as assignee_username,
-        d.name as department_name
-      FROM tasks t
-      LEFT JOIN users u1 ON t.assigned_by = u1.telegram_id
-      LEFT JOIN users u2 ON t.assigned_to = u2.telegram_id
-      LEFT JOIN departments d ON t.department_id = d.id
-    `;
-    const params: (string | number | null)[] = [];
+    const stmt = db.prepare('UPDATE tasks SET message_id = ?, group_chat_id = COALESCE(?, group_chat_id) WHERE id = ?');
+    stmt.run(messageId, groupChatId || null, taskId);
+  }
 
-    if (status) {
-      sql += ` WHERE t.status = ?`;
-      params.push(status);
-    }
+  public static markReminded(taskId: number, type: '24h' | '2h') {
+    const db = Database.getDb();
+    const field = type === '24h' ? 'reminded_24h' : 'reminded_2h';
+    const stmt = db.prepare(`UPDATE tasks SET ${field} = 1 WHERE id = ?`);
+    stmt.run(taskId);
+  }
 
-    sql += ` ORDER BY t.created_at DESC LIMIT ?`;
-    params.push(limit);
+  public static markOverduePrompted(taskId: number) {
+    const db = Database.getDb();
+    const stmt = db.prepare('UPDATE tasks SET overdue_prompted = 1 WHERE id = ?');
+    stmt.run(taskId);
+  }
 
-    const query = db.prepare(sql);
-    return query.all(...params) as unknown as Task[];
+  public static extendDeadline(
+    taskId: number,
+    newDeadline: string,
+    reason: string,
+    userId: number
+  ): Task | null {
+    const db = Database.getDb();
+    const task = TaskService.getById(taskId);
+    if (!task) return null;
+
+    const stmt = db.prepare(`
+      UPDATE tasks
+      SET deadline = ?,
+          overdue_prompted = 0,
+          reminded_24h = 0,
+          reminded_2h = 0,
+          extension_count = COALESCE(extension_count, 0) + 1,
+          extension_reason = ?,
+          status = CASE WHEN status = 'PENDING' THEN 'IN_PROGRESS' ELSE status END,
+          assigned_to = COALESCE(assigned_to, ?),
+          updated_at = datetime('now', 'localtime')
+      WHERE id = ?
+    `);
+    stmt.run(newDeadline, reason.trim(), userId, taskId);
+
+    const logStmt = db.prepare(`
+      INSERT INTO task_logs (task_id, user_id, action, note)
+      VALUES (?, ?, 'EXTENDED', ?)
+    `);
+    logStmt.run(taskId, userId, `Gia hạn đến ${newDeadline} - Lý do: ${reason.trim()}`);
+
+    return TaskService.getById(taskId);
   }
 
   public static getTasksDueSoon(): Task[] {
     const db = Database.getDb();
-    // Lấy các task chưa xong, có deadline, sắp tới hạn trong vòng 24h hoặc 2h
     const query = db.prepare(`
       SELECT 
         t.*,
@@ -220,15 +269,33 @@ export class TaskService {
       WHERE t.status IN ('PENDING', 'IN_PROGRESS')
         AND t.deadline IS NOT NULL
         AND t.deadline > datetime('now', 'localtime')
+        AND t.deadline <= datetime('now', 'localtime', '+24 hours')
+      ORDER BY t.deadline ASC
     `);
     return query.all() as unknown as Task[];
   }
 
-  public static markReminded(taskId: number, type: '24h' | '2h'): void {
+  public static getTasksDueForOverduePrompt(): Task[] {
     const db = Database.getDb();
-    const field = type === '24h' ? 'reminded_24h' : 'reminded_2h';
-    const stmt = db.prepare(`UPDATE tasks SET ${field} = 1 WHERE id = ?`);
-    stmt.run(taskId);
+    const query = db.prepare(`
+      SELECT 
+        t.*,
+        u1.full_name as assigner_name,
+        u1.username as assigner_username,
+        u2.full_name as assignee_name,
+        u2.username as assignee_username,
+        d.name as department_name
+      FROM tasks t
+      LEFT JOIN users u1 ON t.assigned_by = u1.telegram_id
+      LEFT JOIN users u2 ON t.assigned_to = u2.telegram_id
+      LEFT JOIN departments d ON t.department_id = d.id
+      WHERE t.status IN ('PENDING', 'IN_PROGRESS')
+        AND t.deadline IS NOT NULL
+        AND t.deadline <= datetime('now', 'localtime')
+        AND (t.overdue_prompted = 0 OR t.overdue_prompted IS NULL)
+      ORDER BY t.deadline ASC
+    `);
+    return query.all() as unknown as Task[];
   }
 
   public static getOverdueTasks(): Task[] {

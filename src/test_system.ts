@@ -103,6 +103,30 @@ async function runTests() {
   const upcoming = MeetingService.getUpcoming();
   console.log(`   ✅ Số cuộc họp sắp tới: ${upcoming.length}`);
 
+  // 9. Kiểm tra Xử lý Hết hạn Deadline & Gia hạn tương tác
+  console.log('\n9️⃣ Kiểm tra Xử lý Hết Hạn Deadline & Xin Gia Hạn (Interactive Extension):');
+  const pastTask = TaskService.create({
+    title: 'Nộp báo cáo thuế tháng 7',
+    description: 'Nộp báo cáo thuế tháng 7',
+    assignedBy: admin.telegram_id,
+    assignedTo: employee1.telegram_id,
+    deadline: '2026-08-01 17:00:00', // Đã hết hạn trong quá khứ
+    priority: 'HIGH',
+  });
+  console.log(`   ✅ Tạo Task quá hạn #${pastTask.id}: Deadline = ${pastTask.deadline}`);
+
+  const dueOverdue = TaskService.getTasksDueForOverduePrompt();
+  const isFound = dueOverdue.some(t => t.id === pastTask.id);
+  console.log(`   ✅ Phát hiện Task hết hạn cần gửi 2 nút [Đã xong] / [Chưa xong]: ${isFound ? 'THÀNH CÔNG' : 'THẤT BẠI'}`);
+  if (!isFound) throw new Error('Không phát hiện được task hết hạn!');
+
+  TaskService.markOverduePrompted(pastTask.id);
+  const extended = TaskService.extendDeadline(pastTask.id, '2026-08-28 18:00:00', 'Đang đợi bổ sung hóa đơn từ đối tác', employee1.telegram_id);
+  console.log(`   ✅ Gia hạn thành công: Hạn mới = ${extended?.deadline}, Số lần gia hạn = ${extended?.extension_count}, Lý do = "${extended?.extension_reason}"`);
+  if (extended?.extension_count !== 1 || extended?.overdue_prompted !== 0) {
+    throw new Error('Lỗi cập nhật gia hạn task!');
+  }
+
   console.log('\n🎉 TẤT CẢ CÁC BÀI KIỂM THỬ ĐÃ PASS 100% THÀNH CÔNG!');
   Database.close();
 }

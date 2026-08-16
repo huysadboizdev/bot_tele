@@ -22,7 +22,15 @@ export function createBot(): Bot {
     }
   });
 
-  // 2. Các lệnh hệ thống & Quản trị Phòng ban / Nhân sự
+  // 2. Middleware chặn tin nhắn phản hồi khi đang trong trạng thái gia hạn task
+  bot.on('message:text', async (ctx, next) => {
+    const handled = await TaskHandlers.handleTextMessage(ctx);
+    if (!handled) {
+      await next();
+    }
+  });
+
+  // 3. Các lệnh hệ thống & Quản trị Phòng ban / Nhân sự
   bot.command('start', AdminHandlers.handleStart);
   bot.command('help', AdminHandlers.handleHelp);
   bot.command('departments', AdminHandlers.handleDepartments);
@@ -36,7 +44,7 @@ export function createBot(): Bot {
   bot.command(['del_user', 'remove_user'], AdminHandlers.handleDelUser);
   bot.command('stats', AdminHandlers.handleStats);
 
-  // 3. Các lệnh Giao việc & Quản lý Task (CRUD)
+  // 4. Các lệnh Giao việc & Quản lý Task (CRUD)
   bot.command('task', TaskHandlers.assignUserTask);
   bot.command('task_dept', TaskHandlers.assignDepartmentTask);
   bot.command('edit_task', TaskHandlers.handleEditTask);
@@ -46,12 +54,12 @@ export function createBot(): Bot {
   bot.command('pending_tasks', TaskHandlers.getPendingTasks);
   bot.command('done_tasks', TaskHandlers.getDoneTasks);
 
-  // 4. Các lệnh Lên lịch & Quản lý Cuộc họp (Meetings)
+  // 5. Các lệnh Lên lịch & Quản lý Cuộc họp (Meetings)
   bot.command('meeting', MeetingHandlers.handleScheduleMeeting);
   bot.command('meetings', MeetingHandlers.handleGetMeetings);
   bot.command(['del_meeting', 'cancel_meeting'], MeetingHandlers.handleDelMeeting);
 
-  // 5. Xử lý Callback từ các nút bấm Inline (Task & Meeting)
+  // 6. Xử lý Callback từ các nút bấm Inline (Task & Meeting & Overdue Extension)
   bot.on('callback_query:data', async (ctx) => {
     const data = ctx.callbackQuery?.data;
     if (data?.startsWith('meeting:')) {
@@ -61,7 +69,7 @@ export function createBot(): Bot {
     }
   });
 
-  // 6. Bắt lỗi toàn cục của Grammy
+  // 7. Bắt lỗi toàn cục của Grammy
   bot.catch((err) => {
     const ctx = err.ctx;
     console.error(`Lỗi khi xử lý update ${ctx.update.update_id}:`);
