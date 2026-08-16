@@ -2,6 +2,7 @@ import { Bot, GrammyError, HttpError } from 'grammy';
 import { CONFIG, validateConfig } from './config/env';
 import { AdminHandlers } from './modules/admin/handlers';
 import { TaskHandlers } from './modules/tasks/handlers';
+import { MeetingHandlers } from './modules/meetings/handlers';
 
 export function createBot(): Bot {
   validateConfig();
@@ -45,10 +46,22 @@ export function createBot(): Bot {
   bot.command('pending_tasks', TaskHandlers.getPendingTasks);
   bot.command('done_tasks', TaskHandlers.getDoneTasks);
 
-  // 4. Xử lý Callback từ các nút bấm Inline (Nhận việc, Hoàn thành, Hủy)
-  bot.on('callback_query:data', TaskHandlers.handleCallback);
+  // 4. Các lệnh Lên lịch & Quản lý Cuộc họp (Meetings)
+  bot.command('meeting', MeetingHandlers.handleScheduleMeeting);
+  bot.command('meetings', MeetingHandlers.handleGetMeetings);
+  bot.command(['del_meeting', 'cancel_meeting'], MeetingHandlers.handleDelMeeting);
 
-  // 5. Bắt lỗi toàn cục của Grammy
+  // 5. Xử lý Callback từ các nút bấm Inline (Task & Meeting)
+  bot.on('callback_query:data', async (ctx) => {
+    const data = ctx.callbackQuery?.data;
+    if (data?.startsWith('meeting:')) {
+      await MeetingHandlers.handleCallback(ctx);
+    } else {
+      await TaskHandlers.handleCallback(ctx);
+    }
+  });
+
+  // 6. Bắt lỗi toàn cục của Grammy
   bot.catch((err) => {
     const ctx = err.ctx;
     console.error(`Lỗi khi xử lý update ${ctx.update.update_id}:`);

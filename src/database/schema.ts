@@ -67,6 +67,36 @@ CREATE TABLE IF NOT EXISTS system_settings (
   key TEXT PRIMARY KEY,
   value TEXT
 );
+
+-- Bảng Lịch Họp (Meetings)
+CREATE TABLE IF NOT EXISTS meetings (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT NOT NULL,
+  description TEXT,
+  meeting_time TEXT NOT NULL, -- Định dạng: 'YYYY-MM-DD HH:mm:ss'
+  location TEXT, -- Địa điểm hoặc Link Google Meet / Zoom
+  target_type TEXT DEFAULT 'ALL', -- 'ALL', 'DEPARTMENT', 'USERS'
+  target_value TEXT, -- Mã phòng hoặc danh sách @username
+  group_chat_id TEXT,
+  created_by INTEGER NOT NULL,
+  reminded_24h INTEGER DEFAULT 0,
+  reminded_1h INTEGER DEFAULT 0,
+  reminded_15m INTEGER DEFAULT 0,
+  status TEXT DEFAULT 'SCHEDULED', -- 'SCHEDULED', 'COMPLETED', 'CANCELLED'
+  created_at TEXT DEFAULT (datetime('now', 'localtime')),
+  FOREIGN KEY (created_by) REFERENCES users(telegram_id)
+);
+
+-- Bảng người tham gia và điểm danh cuộc họp
+CREATE TABLE IF NOT EXISTS meeting_participants (
+  meeting_id INTEGER NOT NULL,
+  user_id INTEGER NOT NULL,
+  status TEXT DEFAULT 'CONFIRMED', -- 'CONFIRMED', 'DECLINED'
+  updated_at TEXT DEFAULT (datetime('now', 'localtime')),
+  PRIMARY KEY (meeting_id, user_id),
+  FOREIGN KEY (meeting_id) REFERENCES meetings(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(telegram_id)
+);
 `;
 
 export const DEFAULT_DEPARTMENTS = [

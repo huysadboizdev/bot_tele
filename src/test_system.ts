@@ -3,9 +3,10 @@ import { UserService } from './modules/users/service';
 import { DepartmentService } from './modules/departments/service';
 import { TaskService } from './modules/tasks/service';
 import { TaskParser } from './modules/parser';
+import { MeetingService } from './modules/meetings/service';
 import { formatTaskMessage, getTaskKeyboard } from './modules/tasks/keyboards';
 
-function runTests() {
+async function runTests() {
   console.log('🧪 BẮT ĐẦU CHẠY KIỂM THỬ HỆ THỐNG BOT_TELE...\n');
 
   // 1. Kiểm tra Database & Departments
@@ -58,15 +59,15 @@ function runTests() {
 
   // Test Task Message formatting & Inline Keyboard
   const formattedMsg = formatTaskMessage(task1);
-  const kb = getTaskKeyboard(task1);
+  const keyboard = getTaskKeyboard(task1);
   console.log('   ✅ Format message & Keyboard:\n' + formattedMsg);
 
-  // 5. Kiểm tra Lifecycle Task (Accept -> Complete)
-  console.log('5️⃣ Kiểm tra Vòng đời Task:');
-  const accepted = TaskService.updateStatus(task1.id, 'IN_PROGRESS', employee1.telegram_id, 'Nam đã nhận việc');
-  console.log(`   ✅ Task sau khi nhận: Status = ${accepted?.status}`);
+  // 5. Kiểm tra Nhận việc & Hoàn thành Task
+  console.log('\n5️⃣ Kiểm tra Vòng đời Task:');
+  const inProgress = TaskService.updateStatus(task1.id, 'IN_PROGRESS', employee1.telegram_id);
+  console.log(`   ✅ Task sau khi nhận: Status = ${inProgress?.status}`);
 
-  const completed = TaskService.updateStatus(task1.id, 'COMPLETED', employee1.telegram_id, 'Hoàn thành xong banner');
+  const completed = TaskService.updateStatus(task1.id, 'COMPLETED', employee1.telegram_id);
   console.log(`   ✅ Task sau khi xong: Status = ${completed?.status}, CompletedAt = ${completed?.completed_at}`);
 
   // 6. Kiểm tra Task theo Phòng Ban
@@ -82,6 +83,25 @@ function runTests() {
   console.log('\n7️⃣ Kiểm tra Báo cáo thống kê:');
   const stats = TaskService.getStats();
   console.log('   ✅ Thống kê hệ thống:', stats);
+
+  // 8. Kiểm tra Quản lý Lịch họp (MeetingService)
+  console.log('\n8️⃣ Kiểm tra Quản lý Lịch Họp (Meetings):');
+  const meeting = MeetingService.create({
+    title: 'Họp giao ban toàn công ty',
+    meetingTime: '2026-08-25 09:00:00',
+    location: 'Phòng họp Tầng 2',
+    targetType: 'ALL',
+    createdBy: admin.telegram_id,
+  });
+  console.log(`   ✅ Tạo cuộc họp #${meeting.id}: "${meeting.title}" lúc ${meeting.meeting_time}`);
+
+  MeetingService.setParticipantStatus(meeting.id, employee1.telegram_id, 'CONFIRMED');
+  MeetingService.setParticipantStatus(meeting.id, employee2.telegram_id, 'DECLINED');
+  const participants = MeetingService.getParticipants(meeting.id);
+  console.log(`   ✅ Điểm danh: ${participants.confirmed.length} xác nhận tham gia, ${participants.declined.length} báo vắng`);
+
+  const upcoming = MeetingService.getUpcoming();
+  console.log(`   ✅ Số cuộc họp sắp tới: ${upcoming.length}`);
 
   console.log('\n🎉 TẤT CẢ CÁC BÀI KIỂM THỬ ĐÃ PASS 100% THÀNH CÔNG!');
   Database.close();

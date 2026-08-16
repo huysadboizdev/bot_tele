@@ -1,8 +1,11 @@
 import cron from 'node-cron';
 import { Bot } from 'grammy';
 import { TaskService } from '../tasks/service';
+import { MeetingService } from '../meetings/service';
+import { UserService } from '../users/service';
 import { CONFIG } from '../../config/env';
 import { formatTaskMessage, getTaskKeyboard } from '../tasks/keyboards';
+import { formatMeetingMessage, getMeetingKeyboard } from '../meetings/keyboards';
 
 export class SchedulerService {
   private static botInstance: Bot | null = null;
@@ -10,11 +13,12 @@ export class SchedulerService {
   public static init(bot: Bot) {
     SchedulerService.botInstance = bot;
 
-    console.log('⏰ Khởi động hệ thống lập lịch nhắc việc 24/7 (Timezone: ' + CONFIG.TIMEZONE + ')...');
+    console.log('⏰ Khởi động hệ thống lập lịch nhắc việc & lịch họp 24/7 (Timezone: ' + CONFIG.TIMEZONE + ')...');
 
-    // 1. Quét deadline mỗi 5 phút
-    cron.schedule('*/5 * * * *', () => {
+    // 1. Quét deadline công việc & lịch họp mỗi 2 phút
+    cron.schedule('*/2 * * * *', () => {
       SchedulerService.checkDeadlines();
+      SchedulerService.checkMeetingReminders();
     }, {
       timezone: CONFIG.TIMEZONE
     });
@@ -92,6 +96,52 @@ export class SchedulerService {
   }
 
   /**
+   * Quét kiểm tra nhắc lịch họp
+   */
+  public static async checkMeetingReminders() {
+    if (!SchedulerService.botInstance) return;
+
+    try {
+      const dueMeetings = MeetingService.getMeetingsDueForReminder();
+
+      for (const item of dueMeetings) {
+        const { meeting, type } = item;
+        const targetChatId = meeting.group_chat_id || CONFIG.MAIN_GROUP_ID;
+        if (!targetChatId) continue;
+
+        let tagString = '';
+        if (meeting.target_type === 'DEPARTMENT' && meeting.target_value) {
+          const members = UserService.getByDepartment(meeting.target_value);
+          const tags = members.map(m => m.username ? `@${m.username}` : m.full_name).filter(Boolean);
+          if (tags.length > 0) tagString = `\n📢 **Mời các bạn tham gia:** ${tags.join(' ')}\n`;
+        } else if (meeting.target_type === 'USERS' && meeting.target_value) {
+          tagString = `\n📢 **Mời:** ${meeting.target_value}\n`;
+        }
+
+        let prefix = '📢 **THÔNG BÁO LỊCH HỌP**';
+        if (type === '24h') {
+          prefix = '🔔 **NHẮC LỊCH HỌP (TRƯỚC 24 GIỜ)** 🔔';
+        } else if (type === '1h') {
+          prefix = '⏰ **NHẮC LỊCH HỌP: CÒN 1 TIẾNG NỮA BẮT ĐẦU!** ⏰';
+        } else if (type === '15m') {
+          prefix = '🚨 **KHẨN CẤP: CUỘC HỌP SẮP BẮT ĐẦU TRONG 15 PHÚT NỮA!** 🚨';
+        }
+
+        const msg = formatMeetingMessage(meeting, prefix) + tagString;
+
+        await SchedulerService.botInstance.api.sendMessage(targetChatId, msg, {
+          parse_mode: 'Markdown',
+          reply_markup: getMeetingKeyboard(meeting.id),
+        }).catch(console.error);
+
+        MeetingService.markReminded(meeting.id, type);
+      }
+    } catch (error) {
+      console.error('Error during meeting reminder check:', error);
+    }
+  }
+
+  /**
    * Báo cáo công việc đầu ngày (08:30)
    */
   public static async sendMorningBriefing() {
@@ -100,11 +150,19 @@ export class SchedulerService {
     try {
       const stats = TaskService.getStats();
       const overdue = TaskService.getOverdueTasks();
+      const upcomingMeetings = MeetingService.getUpcoming(5);
 
-      let msg = `☀️ **CHÀO BUỔI SÁNG - TỔNG HỢP CÔNG VIỆC CẦN LÀM HÔM NAY** ☀️\n\n`;
-      msg += `📊 Hiện toàn công ty đang có:\n`;
+      let msg = `☀️ **CHÀO BUỔI SÁNG - TỔNG HỢP CÔNG VIỆC & LỊCH HỌP HÔM NAY** ☀️\n\n`;
+      msg += `📊 **Tiến độ công việc:**\n`;
       msg += `• ⏳ **${stats.pending || 0}** việc đang chờ nhận\n`;
       msg += `• ⚙️ **${stats.in_progress || 0}** việc đang thực hiện\n`;
+
+      if (upcomingMeetings.length > 0) {
+        msg += `\n📅 **Lịch họp sắp tới (${upcomingMeetings.length}):**\n`;
+        for (const m of upcomingMeetings) {
+          msg += `  • #${m.id}: **${m.title}** lúc \`${m.meeting_time}\`\n`;
+        }
+      }
 
       if (overdue.length > 0) {
         msg += `\n🔴 **Cảnh báo: ${overdue.length} việc đang bị trễ hạn:**\n`;
@@ -116,14 +174,12 @@ export class SchedulerService {
 
       msg += `\n💪 Chúc toàn thể công ty một ngày làm việc hiệu quả và năng suất!`;
 
-      // Gửi vào nhóm chính nếu có cấu hình
       if (CONFIG.MAIN_GROUP_ID) {
         await SchedulerService.botInstance.api.sendMessage(CONFIG.MAIN_GROUP_ID, msg, {
           parse_mode: 'Markdown',
         }).catch(console.error);
       }
 
-      // Gửi cho Admin
       for (const adminId of CONFIG.ADMIN_IDS) {
         await SchedulerService.botInstance.api.sendMessage(adminId, msg, {
           parse_mode: 'Markdown',

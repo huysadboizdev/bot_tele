@@ -42,6 +42,16 @@ Telegram Bot quản lý công việc chuyên nghiệp cho doanh nghiệp: hỗ t
 
 ---
 
+### 📅 4. Lên Lịch & Quản Lý Cuộc Họp (Meetings):
+| Hành động | Lệnh | Ví dụ | Mô tả |
+| :--- | :--- | :--- | :--- |
+| **Lên lịch họp** | `/meeting` | `/meeting Họp giao ban lúc: 09:00 tại: Phòng Tầng 2 [cho: all]` | Lên lịch họp & gửi thông báo kèm nút điểm danh |
+| **Họp phòng ban** | `/meeting` | `/meeting Họp chiến dịch lúc: 14h30 tại: Google Meet cho: marketing` | Lên lịch họp & tag toàn bộ phòng ban |
+| **Xem lịch họp** | `/meetings` | `/meetings` | Xem danh sách các cuộc họp sắp diễn ra |
+| **Hủy cuộc họp** | `/del_meeting` | `/del_meeting 1` | Hủy / Xóa cuộc họp khỏi hệ thống |
+
+---
+
 ## 🚀 Hướng Dẫn Cài Đặt & Vận Hành Trên VPS Windows (2 Core, 2GB RAM, 30GB)
 
 ### Bước 1: Chuẩn bị trên VPS

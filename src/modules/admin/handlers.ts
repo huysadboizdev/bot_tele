@@ -71,7 +71,12 @@ export class AdminHandlers {
       help += `• **Giao việc phòng ban:** \`/task_dept <mã_phòng> <nội dung> [hạn: ...]\`\n`;
       help += `• **Sửa việc/deadline:** \`/edit_task <id> <nội dung mới> [hạn: ...]\`\n`;
       help += `• **Xóa việc:** \`/del_task <id>\`\n`;
-      help += `• **Tổng hợp:** \`/all_tasks\`, \`/pending_tasks\`, \`/done_tasks\`, \`/stats\`\n`;
+      help += `• **Tổng hợp:** \`/all_tasks\`, \`/pending_tasks\`, \`/done_tasks\`, \`/stats\`\n\n`;
+
+      help += `📅 **4. Lên Lịch & Quản Lý Cuộc Họp (Meetings):**\n`;
+      help += `• **Lên lịch họp:** \`/meeting <Chủ đề> lúc: <thời gian> [tại: ...] [cho: all/mã_phòng/@user]\`\n`;
+      help += `• **Xem lịch họp:** \`/meetings\`\n`;
+      help += `• **Hủy họp:** \`/del_meeting <id>\`\n`;
     }
 
     await ctx.reply(help, { parse_mode: 'Markdown' });
