@@ -294,6 +294,39 @@ export class AdminHandlers {
   }
 
   /**
+   * /del_dept <mã_phòng>
+   */
+  public static async handleDelDept(ctx: Context) {
+    const senderId = ctx.from?.id;
+    if (!senderId || !UserService.isAdmin(senderId)) {
+      await ctx.reply('⚠️ Bạn không có quyền thực hiện lệnh này.');
+      return;
+    }
+
+    const text = (ctx.message?.text || '').replace(/^\/del_dept(@\w+)?\s*/i, '').trim();
+    if (!text) {
+      await ctx.reply(
+        '👉 Cú pháp: `/del_dept <mã_phòng>`\nVí dụ: `/del_dept cskh`\n_Gõ /departments để xem mã phòng._',
+        { parse_mode: 'Markdown' }
+      );
+      return;
+    }
+
+    const dept = DepartmentService.findByNameOrSlug(text);
+    if (!dept) {
+      await ctx.reply(`❌ Không tìm thấy phòng ban nào có mã hoặc tên là "${text}".`, { parse_mode: 'Markdown' });
+      return;
+    }
+
+    const success = DepartmentService.delete(dept.id);
+    if (success) {
+      await ctx.reply(`🗑️ Đã xóa phòng ban **${dept.name}** (Mã: \`${dept.id}\`) khỏi hệ thống!`, { parse_mode: 'Markdown' });
+    } else {
+      await ctx.reply(`❌ Xóa phòng ban thất bại.`, { parse_mode: 'Markdown' });
+    }
+  }
+
+  /**
    * /stats: Thống kê KPI & tiến độ công việc
    */
   public static async handleStats(ctx: Context) {

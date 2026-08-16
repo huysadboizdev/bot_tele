@@ -29,6 +29,7 @@ export function createBot(): Bot {
   bot.command('set_dept', AdminHandlers.handleSetDept);
   bot.command('set_role', AdminHandlers.handleSetRole);
   bot.command('add_dept', AdminHandlers.handleAddDept);
+  bot.command(['del_dept', 'delete_dept'], AdminHandlers.handleDelDept);
   bot.command('stats', AdminHandlers.handleStats);
 
   // 3. Các lệnh Giao việc & Quản lý Task
