@@ -185,6 +185,24 @@ export class UserService {
     }
   }
 
+  /**
+   * Xóa nhân viên khỏi phòng ban (set department_id = null)
+   */
+  public static removeDepartmentByUsername(username: string): { status: 'REMOVED' | 'NOT_FOUND', fullName?: string } {
+    const cleanUsername = username.replace(/^@/, '').toLowerCase().trim();
+    const user = UserService.getByUsername(cleanUsername);
+
+    if (user) {
+      UserService.setDepartment(user.telegram_id, null);
+      return { status: 'REMOVED', fullName: user.full_name };
+    } else {
+      const db = Database.getDb();
+      const stmt = db.prepare('UPDATE pending_assignments SET department_id = NULL WHERE username = ?');
+      stmt.run(cleanUsername);
+      return { status: 'NOT_FOUND' };
+    }
+  }
+
   public static isAdmin(telegramId: number): boolean {
     if (CONFIG.ADMIN_IDS.includes(telegramId)) return true;
     const user = UserService.getById(telegramId);

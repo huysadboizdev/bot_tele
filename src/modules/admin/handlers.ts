@@ -197,6 +197,58 @@ export class AdminHandlers {
   }
 
   /**
+   * /remove_dept [@username] (hoặc Reply tin nhắn)
+   */
+  public static async handleRemoveDept(ctx: Context) {
+    const senderId = ctx.from?.id;
+    if (!senderId || !UserService.isAdmin(senderId)) {
+      await ctx.reply('⚠️ Bạn không có quyền thực hiện lệnh này.');
+      return;
+    }
+
+    const text = (ctx.message?.text || '').replace(/^\/(remove_dept|unset_dept)(@\w+)?\s*/i, '').trim();
+    const repliedUser = ctx.message?.reply_to_message?.from;
+
+    let targetUsername = '';
+
+    // Trường hợp 1: Reply tin nhắn và gõ /remove_dept
+    if (repliedUser) {
+      UserService.upsertUser(repliedUser.id, repliedUser.username, repliedUser.first_name);
+      UserService.setDepartment(repliedUser.id, null);
+
+      const userTag = repliedUser.username ? `@${repliedUser.username}` : repliedUser.first_name;
+      await ctx.reply(`✅ Đã xóa nhân viên **${repliedUser.first_name}** (${userTag}) khỏi phòng ban!`, {
+        parse_mode: 'Markdown',
+      });
+      return;
+    }
+
+    // Trường hợp 2: Gõ /remove_dept @username
+    if (!text) {
+      await ctx.reply(
+        '👉 **Cú pháp:**\n' +
+        '1. `/remove_dept @username` (Ví dụ: `/remove_dept @nam`)\n' +
+        '2. Hoặc **Reply tin nhắn** của nhân viên và gõ: `/remove_dept`',
+        { parse_mode: 'Markdown' }
+      );
+      return;
+    }
+
+    targetUsername = text.replace(/^@/, '').trim();
+    const result = UserService.removeDepartmentByUsername(targetUsername);
+
+    if (result.status === 'REMOVED') {
+      await ctx.reply(`✅ Đã xóa nhân viên **${result.fullName}** (@${targetUsername}) khỏi phòng ban!`, {
+        parse_mode: 'Markdown',
+      });
+    } else {
+      await ctx.reply(`✅ Đã xóa liên kết phòng ban của @${targetUsername}!`, {
+        parse_mode: 'Markdown',
+      });
+    }
+  }
+
+  /**
    * /set_role [@username] <ADMIN | MANAGER | EMPLOYEE> (hoặc Reply tin nhắn)
    */
   public static async handleSetRole(ctx: Context) {
