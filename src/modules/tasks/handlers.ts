@@ -1,0 +1,294 @@
+import { Context } from 'grammy';
+import { UserService } from '../users/service';
+import { DepartmentService } from '../departments/service';
+import { TaskService } from './service';
+import { TaskParser } from '../parser';
+import { formatTaskMessage, getTaskKeyboard } from './keyboards';
+
+export class TaskHandlers {
+  /**
+   * /task @username <nội dung> [hạn: YYYY-MM-DD HH:mm]
+   */
+  public static async assignUserTask(ctx: Context) {
+    const senderId = ctx.from?.id;
+    if (!senderId) return;
+
+    // Đăng ký/cập nhật thông tin người gửi
+    UserService.upsertUser(senderId, ctx.from.username, ctx.from.first_name);
+
+    if (!UserService.isAdmin(senderId)) {
+      await ctx.reply('⚠️ Bạn cần có quyền Quản trị viên (Admin/Manager) để giao việc.', {
+        reply_to_message_id: ctx.message?.message_id,
+      });
+      return;
+    }
+
+    const text = ctx.message?.text || '';
+    const parsed = TaskParser.parseUserTask(text);
+
+    if (!parsed) {
+      await ctx.reply(
+        '📌 **Hướng dẫn giao việc cá nhân:**\n' +
+        '👉 Cú pháp: `/task @username <nội dung công việc> [hạn: YYYY-MM-DD HH:mm]`\n' +
+        '💡 Ví dụ: `/task @nam Làm slide giới thiệu sản phẩm mới hạn: 2026-08-20 17:00 [gấp]`',
+        { parse_mode: 'Markdown', reply_to_message_id: ctx.message?.message_id }
+      );
+      return;
+    }
+
+    const targetUser = UserService.getByUsername(parsed.targetRaw);
+    const assignedToId = targetUser ? targetUser.telegram_id : undefined;
+
+    const task = TaskService.create({
+      title: parsed.title,
+      description: parsed.description,
+      assignedBy: senderId,
+      assignedTo: assignedToId,
+      deadline: parsed.deadline,
+      priority: parsed.priority,
+      groupChatId: ctx.chat?.id.toString(),
+    });
+
+    // Tag tên người nhận
+    const tagString = `@${parsed.targetRaw}`;
+    const messageText = `🔔 ${tagString} Bạn có công việc mới được giao!\n\n` + formatTaskMessage(task);
+
+    const sentMsg = await ctx.reply(messageText, {
+      parse_mode: 'Markdown',
+      reply_markup: getTaskKeyboard(task),
+    });
+
+    TaskService.updateMessageId(task.id, sentMsg.message_id, ctx.chat?.id.toString());
+  }
+
+  /**
+   * /task_dept <tên phòng> <nội dung> [hạn: YYYY-MM-DD HH:mm]
+   */
+  public static async assignDepartmentTask(ctx: Context) {
+    const senderId = ctx.from?.id;
+    if (!senderId) return;
+
+    UserService.upsertUser(senderId, ctx.from.username, ctx.from.first_name);
+
+    if (!UserService.isAdmin(senderId)) {
+      await ctx.reply('⚠️ Bạn cần có quyền Quản trị viên (Admin/Manager) để giao việc theo phòng ban.', {
+        reply_to_message_id: ctx.message?.message_id,
+      });
+      return;
+    }
+
+    const text = ctx.message?.text || '';
+    const parsed = TaskParser.parseDepartmentTask(text);
+
+    if (!parsed) {
+      const depts = DepartmentService.getAll();
+      const deptList = depts.map(d => `• \`${d.id}\` (${d.name})`).join('\n');
+
+      await ctx.reply(
+        '👥 **Hướng dẫn giao việc theo phòng ban:**\n' +
+        '👉 Cú pháp: `/task_dept <tên_phòng> <nội dung> [hạn: YYYY-MM-DD HH:mm]`\n' +
+        '💡 Ví dụ: `/task_dept marketing Thiết kế banner sự kiện tuần sau hạn: 17h`\n\n' +
+        `🏢 **Danh sách phòng ban hiện có:**\n${deptList}`,
+        { parse_mode: 'Markdown', reply_to_message_id: ctx.message?.message_id }
+      );
+      return;
+    }
+
+    const dept = DepartmentService.findByNameOrSlug(parsed.targetRaw);
+    if (!dept) {
+      await ctx.reply(
+        `❌ Không tìm thấy phòng ban **"${parsed.targetRaw}"**.\n` +
+        'Gõ `/departments` để xem danh sách phòng ban chính xác.',
+        { parse_mode: 'Markdown', reply_to_message_id: ctx.message?.message_id }
+      );
+      return;
+    }
+
+    // Lấy tất cả thành viên trong phòng ban để tag
+    const members = UserService.getByDepartment(dept.id);
+    const tagList = members
+      .map(m => m.username ? `@${m.username}` : m.full_name)
+      .filter(Boolean);
+
+    const tagHeader = tagList.length > 0
+      ? `📢 Thông báo đến phòng **${dept.name}** (${tagList.join(' ')}):`
+      : `📢 Thông báo đến phòng **${dept.name}**:`;
+
+    const task = TaskService.create({
+      title: parsed.title,
+      description: parsed.description,
+      assignedBy: senderId,
+      departmentId: dept.id,
+      deadline: parsed.deadline,
+      priority: parsed.priority,
+      groupChatId: ctx.chat?.id.toString(),
+    });
+
+    const messageText = `${tagHeader}\n\n` + formatTaskMessage(task);
+
+    const sentMsg = await ctx.reply(messageText, {
+      parse_mode: 'Markdown',
+      reply_markup: getTaskKeyboard(task),
+    });
+
+    TaskService.updateMessageId(task.id, sentMsg.message_id, ctx.chat?.id.toString());
+  }
+
+  /**
+   * /my_tasks: Xem danh sách công việc của cá nhân
+   */
+  public static async getMyTasks(ctx: Context) {
+    const senderId = ctx.from?.id;
+    if (!senderId) return;
+
+    UserService.upsertUser(senderId, ctx.from.username, ctx.from.first_name);
+
+    const tasks = TaskService.getByUser(senderId);
+    if (tasks.length === 0) {
+      await ctx.reply('🎉 Bạn hiện không có công việc nào đang chờ xử lý!');
+      return;
+    }
+
+    let msg = `📋 **DANH SÁCH CÔNG VIỆC CỦA BẠN (${tasks.length})**\n\n`;
+    for (const t of tasks) {
+      const statusIcon = t.status === 'IN_PROGRESS' ? '⚙️' : '⏳';
+      const deadlineInfo = t.deadline ? ` | ⏰ Hạn: \`${t.deadline}\`` : '';
+      msg += `${statusIcon} **#${t.id}:** ${t.title} (${t.status})${deadlineInfo}\n`;
+    }
+
+    msg += '\n👉 Nhấn vào từng công việc để cập nhật trạng thái.';
+    await ctx.reply(msg, { parse_mode: 'Markdown' });
+  }
+
+  /**
+   * /all_tasks: Xem toàn bộ công việc công ty
+   */
+  public static async getAllTasks(ctx: Context) {
+    const senderId = ctx.from?.id;
+    if (!senderId) return;
+
+    if (!UserService.isAdmin(senderId)) {
+      await ctx.reply('⚠️ Lệnh này chỉ dành cho Quản trị viên (Admin/Manager).');
+      return;
+    }
+
+    const tasks = TaskService.getAll(undefined, 20);
+    if (tasks.length === 0) {
+      await ctx.reply('Hiện chưa có công việc nào được ghi nhận.');
+      return;
+    }
+
+    let msg = `🏢 **TỔNG HỢP CÔNG VIỆC CÔNG TY (Gần nhất ${tasks.length})**\n\n`;
+    for (const t of tasks) {
+      const statusIcon = {
+        PENDING: '⏳',
+        IN_PROGRESS: '⚙️',
+        COMPLETED: '✅',
+        CANCELLED: '🚫',
+      }[t.status];
+
+      const assignee = t.assignee_username 
+        ? `@${t.assignee_username}` 
+        : (t.department_name ? `Phòng ${t.department_name}` : 'Chưa có');
+
+      msg += `${statusIcon} **#${t.id}**: ${t.title}\n   👤 Nhận: ${assignee} | 📊 ${t.status}\n`;
+    }
+
+    await ctx.reply(msg, { parse_mode: 'Markdown' });
+  }
+
+  /**
+   * Xử lý khi bấm nút nhận việc, hoàn thành, hủy
+   */
+  public static async handleCallback(ctx: Context) {
+    const callbackData = ctx.callbackQuery?.data;
+    const userId = ctx.from?.id;
+    if (!callbackData || !userId) return;
+
+    const [action, subAction, rawTaskId] = callbackData.split(':');
+    if (action !== 'task') return;
+
+    const taskId = Number(rawTaskId);
+    const task = TaskService.getById(taskId);
+
+    if (!task) {
+      await ctx.answerCallbackQuery({ text: '❌ Công việc không tồn tại hoặc đã bị xóa.' });
+      return;
+    }
+
+    const userName = ctx.from.username ? `@${ctx.from.username}` : ctx.from.first_name;
+
+    // 1. Nhận việc (Accept)
+    if (subAction === 'accept') {
+      if (task.status !== 'PENDING') {
+        await ctx.answerCallbackQuery({ text: `Công việc này đang ở trạng thái: ${task.status}` });
+        return;
+      }
+
+      const updated = TaskService.updateStatus(taskId, 'IN_PROGRESS', userId, `Được tiếp nhận bởi ${userName}`);
+      if (updated) {
+        await ctx.answerCallbackQuery({ text: '🚀 Bạn đã tiếp nhận công việc này!' });
+        const updatedMsg = formatTaskMessage(updated, `🚀 ${userName} đã tiếp nhận xử lý lúc ${new Date().toLocaleTimeString('vi-VN')}`);
+        await ctx.editMessageText(updatedMsg, {
+          parse_mode: 'Markdown',
+          reply_markup: getTaskKeyboard(updated),
+        });
+      }
+    }
+
+    // 2. Báo cáo hoàn thành (Complete)
+    else if (subAction === 'complete') {
+      if (task.status === 'COMPLETED') {
+        await ctx.answerCallbackQuery({ text: 'Công việc đã được hoàn thành trước đó.' });
+        return;
+      }
+
+      const updated = TaskService.updateStatus(taskId, 'COMPLETED', userId, `Hoàn thành bởi ${userName}`);
+      if (updated) {
+        await ctx.answerCallbackQuery({ text: '🎉 Chúc mừng! Bạn đã hoàn thành công việc!' });
+        const updatedMsg = formatTaskMessage(updated, `🎉 ${userName} đã báo cáo hoàn thành lúc ${new Date().toLocaleTimeString('vi-VN')}`);
+        await ctx.editMessageText(updatedMsg, {
+          parse_mode: 'Markdown',
+          reply_markup: getTaskKeyboard(updated),
+        });
+      }
+    }
+
+    // 3. Hủy công việc (Cancel)
+    else if (subAction === 'cancel') {
+      const isAdmin = UserService.isAdmin(userId);
+      const isAssigner = task.assigned_by === userId;
+
+      if (!isAdmin && !isAssigner) {
+        await ctx.answerCallbackQuery({ text: '⚠️ Chỉ người giao việc hoặc Admin mới có quyền hủy task.' });
+        return;
+      }
+
+      const updated = TaskService.updateStatus(taskId, 'CANCELLED', userId, `Bị hủy bởi ${userName}`);
+      if (updated) {
+        await ctx.answerCallbackQuery({ text: 'Đã hủy công việc.' });
+        const updatedMsg = formatTaskMessage(updated, `🚫 ${userName} đã hủy công việc này.`);
+        await ctx.editMessageText(updatedMsg, {
+          parse_mode: 'Markdown',
+          reply_markup: getTaskKeyboard(updated),
+        });
+      }
+    }
+
+    // 4. Báo cáo tiến độ (Progress)
+    else if (subAction === 'progress') {
+      await ctx.answerCallbackQuery({ 
+        text: `📌 Để báo cáo tiến độ, bạn có thể reply trực tiếp vào tin nhắn này kèm nội dung cập nhật.`,
+        show_alert: true 
+      });
+    }
+
+    // 5. Xem chi tiết (Detail)
+    else if (subAction === 'detail') {
+      await ctx.answerCallbackQuery({
+        text: `Chi tiết task #${task.id}: ${task.title}\nTrạng thái: ${task.status}`,
+        show_alert: true
+      });
+    }
+  }
+}
