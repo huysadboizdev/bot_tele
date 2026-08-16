@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS users (
   telegram_id INTEGER PRIMARY KEY,
   username TEXT,
   full_name TEXT NOT NULL,
+  title TEXT, -- Chức vụ / Vị trí công việc (ví dụ: 'Trưởng Phòng', 'Chuyên Viên', 'Leader')
   role TEXT DEFAULT 'EMPLOYEE', -- 'ADMIN', 'MANAGER', 'EMPLOYEE'
   department_id TEXT,
   created_at TEXT DEFAULT (datetime('now', 'localtime')),
@@ -62,6 +63,7 @@ CREATE TABLE IF NOT EXISTS pending_assignments (
   username TEXT PRIMARY KEY,
   role TEXT,
   department_id TEXT,
+  title TEXT,
   created_at TEXT DEFAULT (datetime('now', 'localtime'))
 );
 

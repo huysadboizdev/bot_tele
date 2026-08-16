@@ -16,14 +16,16 @@ Telegram Bot quản lý công việc chuyên nghiệp cho doanh nghiệp: hỗ t
 
 ---
 
-### 👥 2. Quản lý Nhân Sự & Phân Quyền (CRUD):
+### 👥 2. Quản lý Nhân Sự, Chức Vụ & Phân Quyền (CRUD):
 | Hành động | Lệnh | Ví dụ | Mô tả |
 | :--- | :--- | :--- | :--- |
-| **Gán phòng** | `/set_dept` | `/set_dept @nam marketing` *(hoặc reply `/set_dept marketing`)* | Gán nhân viên vào phòng ban |
+| **Gán phòng & Chức vụ (Gộp)** | `/set_user` | `/set_user @nam mkt Trưởng Phòng Marketing` *(hoặc reply `/set_user mkt Trưởng Phòng`)* | Gán 1 lệnh đồng thời Phòng ban + Chức danh + Tự cấp quyền Quản lý |
+| **Đổi chức vụ** | `/set_title` | `/set_title @nam Phó Giám Đốc` *(hoặc reply `/set_title Phó Giám Đốc`)* | Cập nhật chức danh / vị trí công việc |
+| **Gán phòng lẻ** | `/set_dept` | `/set_dept @nam marketing` *(hoặc reply `/set_dept marketing`)* | Gán nhân viên vào phòng ban |
 | **Xóa khỏi phòng** | `/remove_dept` | `/remove_dept @nam` *(hoặc reply `/remove_dept`)* | Xóa nhân viên khỏi phòng ban |
 | **Phân quyền** | `/set_role` | `/set_role @nam ADMIN` *(hoặc reply `/set_role ADMIN`)* | Cấp quyền `ADMIN`, `MANAGER`, `EMPLOYEE` |
 | **Xóa tài khoản** | `/del_user` | `/del_user @nam` *(hoặc reply `/del_user`)* | Xóa nhân sự khỏi database hệ thống |
-| **Xem danh bạ** | `/members` | `/members` | Xem danh bạ nhân sự phân theo phòng ban |
+| **Xem danh bạ** | `/members` | `/members` | Xem danh bạ nhân sự phân theo phòng ban & chức vụ |
 
 ---
 

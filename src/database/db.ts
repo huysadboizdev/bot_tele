@@ -33,6 +33,14 @@ export class Database {
     try {
       Database.instance.exec('ALTER TABLE tasks ADD COLUMN extension_reason TEXT;');
     } catch (_) {}
+
+    try {
+      Database.instance.exec('ALTER TABLE users ADD COLUMN title TEXT;');
+    } catch (_) {}
+
+    try {
+      Database.instance.exec('ALTER TABLE pending_assignments ADD COLUMN title TEXT;');
+    } catch (_) {}
   }
 
   public static close() {

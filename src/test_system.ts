@@ -127,7 +127,25 @@ async function runTests() {
     throw new Error('Lỗi cập nhật gia hạn task!');
   }
 
-  console.log('\n🎉 TẤT CẢ CÁC BÀI KIỂM THỬ ĐÃ PASS 100% THÀNH CÔNG!');
+  // 10. Kiểm tra Quản lý Chức Vụ gắn liền với Phòng Ban
+  console.log('\n🔟 Kiểm tra Quản Lý Chức Vụ & Phòng Ban (Positions & Titles):');
+  const setUserRes = UserService.setUserDeptAndTitle('nam_marketing', 'marketing', 'Trưởng Phòng Marketing');
+  console.log(`   ✅ Gán gộp Phòng ban + Chức vụ (@nam_marketing): Title = "Trưởng Phòng Marketing", Role = ${setUserRes.appliedRole}`);
+  if (setUserRes.appliedRole !== 'MANAGER') {
+    throw new Error('Tự động thăng cấp MANAGER khi có chức danh Trưởng phòng thất bại!');
+  }
+
+  const setTitleRes = UserService.setTitleByUsername('hoa_marketing', 'Chuyên Viên Sáng Tạo Nội Dung');
+  console.log(`   ✅ Đổi chức danh lẻ (@hoa_marketing): Status = ${setTitleRes.status}`);
+
+  const allMembers = UserService.getAll();
+  const nam = allMembers.find(u => u.username === 'nam_marketing');
+  console.log(`   ✅ Kiểm tra danh bạ: ${nam?.full_name} - 💼 ${nam?.title} [${nam?.role}]`);
+  if (nam?.title !== 'Trưởng Phòng Marketing') {
+    throw new Error('Chức danh chưa được lưu chính xác!');
+  }
+
+  console.log('\n🎉 TẤT CẢ 10/10 BÀI KIỂM THỬ ĐÃ PASS 100% THÀNH CÔNG!');
   Database.close();
 }
 

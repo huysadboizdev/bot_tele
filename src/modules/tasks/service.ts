@@ -25,6 +25,7 @@ export interface Task {
   assigner_username?: string | null;
   assignee_name?: string | null;
   assignee_username?: string | null;
+  assignee_title?: string | null;
   department_name?: string | null;
 }
 
@@ -83,6 +84,7 @@ export class TaskService {
         u1.username as assigner_username,
         u2.full_name as assignee_name,
         u2.username as assignee_username,
+        u2.title as assignee_title,
         d.name as department_name
       FROM tasks t
       LEFT JOIN users u1 ON t.assigned_by = u1.telegram_id
@@ -102,6 +104,7 @@ export class TaskService {
         u1.username as assigner_username,
         u2.full_name as assignee_name,
         u2.username as assignee_username,
+        u2.title as assignee_title,
         d.name as department_name
       FROM tasks t
       LEFT JOIN users u1 ON t.assigned_by = u1.telegram_id
@@ -132,6 +135,7 @@ export class TaskService {
         u1.username as assigner_username,
         u2.full_name as assignee_name,
         u2.username as assignee_username,
+        u2.title as assignee_title,
         d.name as department_name
       FROM tasks t
       LEFT JOIN users u1 ON t.assigned_by = u1.telegram_id
@@ -261,6 +265,7 @@ export class TaskService {
         u1.username as assigner_username,
         u2.full_name as assignee_name,
         u2.username as assignee_username,
+        u2.title as assignee_title,
         d.name as department_name
       FROM tasks t
       LEFT JOIN users u1 ON t.assigned_by = u1.telegram_id
@@ -284,6 +289,7 @@ export class TaskService {
         u1.username as assigner_username,
         u2.full_name as assignee_name,
         u2.username as assignee_username,
+        u2.title as assignee_title,
         d.name as department_name
       FROM tasks t
       LEFT JOIN users u1 ON t.assigned_by = u1.telegram_id
@@ -307,6 +313,7 @@ export class TaskService {
         u1.username as assigner_username,
         u2.full_name as assignee_name,
         u2.username as assignee_username,
+        u2.title as assignee_title,
         d.name as department_name
       FROM tasks t
       LEFT JOIN users u1 ON t.assigned_by = u1.telegram_id

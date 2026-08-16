@@ -5,6 +5,7 @@ export interface User {
   telegram_id: number;
   username: string | null;
   full_name: string;
+  title: string | null;
   role: 'ADMIN' | 'MANAGER' | 'EMPLOYEE';
   department_id: string | null;
   created_at: string;
@@ -15,6 +16,7 @@ export interface PendingAssignment {
   username: string;
   role: string | null;
   department_id: string | null;
+  title: string | null;
   created_at: string;
 }
 
@@ -29,8 +31,9 @@ export class UserService {
     const isSuperAdmin = CONFIG.ADMIN_IDS.includes(telegramId);
     let defaultRole: 'ADMIN' | 'MANAGER' | 'EMPLOYEE' = isSuperAdmin ? 'ADMIN' : 'EMPLOYEE';
     let defaultDept: string | null = null;
+    let defaultTitle: string | null = null;
 
-    // Kiểm tra xem có phân quyền hoặc phòng ban chờ sẵn cho username này không
+    // Kiểm tra xem có phân quyền, phòng ban hoặc chức vụ chờ sẵn cho username này không
     if (cleanUsername) {
       const pendingQuery = db.prepare('SELECT * FROM pending_assignments WHERE username = ?');
       const pending = pendingQuery.get(cleanUsername) as unknown as PendingAssignment | undefined;
@@ -41,6 +44,9 @@ export class UserService {
         }
         if (pending.department_id) {
           defaultDept = pending.department_id;
+        }
+        if (pending.title) {
+          defaultTitle = pending.title;
         }
       }
     }
@@ -53,21 +59,22 @@ export class UserService {
         SET username = ?, 
             full_name = ?, 
             department_id = COALESCE(?, department_id),
+            title = COALESCE(?, title),
             role = CASE WHEN ? = 'ADMIN' THEN 'ADMIN' ELSE role END,
             updated_at = datetime('now', 'localtime')
         WHERE telegram_id = ?
       `);
-      stmt.run(cleanUsername, fullName, defaultDept, defaultRole, telegramId);
+      stmt.run(cleanUsername, fullName, defaultDept, defaultTitle, defaultRole, telegramId);
 
       if (isSuperAdmin && existing.role !== 'ADMIN') {
         UserService.setRole(telegramId, 'ADMIN');
       }
     } else {
       const stmt = db.prepare(`
-        INSERT INTO users (telegram_id, username, full_name, role, department_id)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO users (telegram_id, username, full_name, role, department_id, title)
+        VALUES (?, ?, ?, ?, ?, ?)
       `);
-      stmt.run(telegramId, cleanUsername, fullName, defaultRole, defaultDept);
+      stmt.run(telegramId, cleanUsername, fullName, defaultRole, defaultDept, defaultTitle);
     }
 
     // Xóa record pending nếu có
@@ -121,6 +128,22 @@ export class UserService {
       return true;
     } catch (error) {
       console.error('Error setting user department:', error);
+      return false;
+    }
+  }
+
+  public static setTitle(telegramId: number, title: string | null): boolean {
+    const db = Database.getDb();
+    try {
+      const stmt = db.prepare(`
+        UPDATE users 
+        SET title = ?, updated_at = datetime('now', 'localtime')
+        WHERE telegram_id = ?
+      `);
+      stmt.run(title ? title.trim() : null, telegramId);
+      return true;
+    } catch (error) {
+      console.error('Error setting user title:', error);
       return false;
     }
   }
@@ -182,6 +205,72 @@ export class UserService {
       `);
       stmt.run(cleanUsername, departmentId);
       return { status: 'PENDING' };
+    }
+  }
+
+  /**
+   * Gán chức danh trực tiếp hoặc lưu tạm chờ kích hoạt
+   */
+  public static setTitleByUsername(username: string, title: string): { status: 'UPDATED' | 'PENDING', fullName?: string } {
+    const cleanUsername = username.replace(/^@/, '').toLowerCase().trim();
+    const cleanTitle = title.trim();
+    const user = UserService.getByUsername(cleanUsername);
+
+    if (user) {
+      UserService.setTitle(user.telegram_id, cleanTitle);
+      return { status: 'UPDATED', fullName: user.full_name };
+    } else {
+      const db = Database.getDb();
+      const stmt = db.prepare(`
+        INSERT INTO pending_assignments (username, title)
+        VALUES (?, ?)
+        ON CONFLICT(username) DO UPDATE SET title = excluded.title
+      `);
+      stmt.run(cleanUsername, cleanTitle);
+      return { status: 'PENDING' };
+    }
+  }
+
+  /**
+   * Gán đồng thời Phòng ban + Chức vụ (+ Quyền tự động)
+   */
+  public static setUserDeptAndTitle(
+    username: string,
+    departmentId: string,
+    title: string,
+    role?: 'ADMIN' | 'MANAGER' | 'EMPLOYEE'
+  ): { status: 'UPDATED' | 'PENDING', fullName?: string; appliedRole: 'ADMIN' | 'MANAGER' | 'EMPLOYEE' } {
+    const cleanUsername = username.replace(/^@/, '').toLowerCase().trim();
+    const cleanTitle = title.trim();
+    let targetRole: 'ADMIN' | 'MANAGER' | 'EMPLOYEE' = role || 'EMPLOYEE';
+
+    // Tự động thăng hạng MANAGER nếu chức danh có yếu tố quản lý/trưởng
+    if (!role) {
+      if (/trưởng|phó|leader|quản lý|manager|director|giám đốc|chủ nhiệm/i.test(cleanTitle)) {
+        targetRole = 'MANAGER';
+      }
+    }
+
+    const user = UserService.getByUsername(cleanUsername);
+    if (user) {
+      UserService.setDepartment(user.telegram_id, departmentId);
+      UserService.setTitle(user.telegram_id, cleanTitle);
+      if (user.role !== 'ADMIN') {
+        UserService.setRole(user.telegram_id, targetRole);
+      }
+      return { status: 'UPDATED', fullName: user.full_name, appliedRole: user.role === 'ADMIN' ? 'ADMIN' : targetRole };
+    } else {
+      const db = Database.getDb();
+      const stmt = db.prepare(`
+        INSERT INTO pending_assignments (username, department_id, title, role)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(username) DO UPDATE SET 
+          department_id = excluded.department_id,
+          title = excluded.title,
+          role = excluded.role
+      `);
+      stmt.run(cleanUsername, departmentId, cleanTitle, targetRole);
+      return { status: 'PENDING', appliedRole: targetRole };
     }
   }
 

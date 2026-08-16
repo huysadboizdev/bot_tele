@@ -35,6 +35,8 @@ export function createBot(): Bot {
   bot.command('help', AdminHandlers.handleHelp);
   bot.command('departments', AdminHandlers.handleDepartments);
   bot.command('members', AdminHandlers.handleMembers);
+  bot.command('set_user', AdminHandlers.handleSetUser);
+  bot.command('set_title', AdminHandlers.handleSetTitle);
   bot.command('set_dept', AdminHandlers.handleSetDept);
   bot.command(['remove_dept', 'unset_dept'], AdminHandlers.handleRemoveDept);
   bot.command('set_role', AdminHandlers.handleSetRole);

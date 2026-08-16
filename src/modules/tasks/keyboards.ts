@@ -40,10 +40,12 @@ export function getExtensionOptionsKeyboard(taskId: number): InlineKeyboard {
 
 export function formatOverduePromptMessage(task: Task): string {
   let targetDisplay = '';
+  const titlePart = task.assignee_title ? ` - ${task.assignee_title}` : '';
+
   if (task.assignee_username) {
-    targetDisplay = `@${task.assignee_username} (${task.assignee_name})`;
+    targetDisplay = `@${task.assignee_username} (${task.assignee_name}${titlePart})`;
   } else if (task.assignee_name) {
-    targetDisplay = `${task.assignee_name}`;
+    targetDisplay = `${task.assignee_name}${titlePart}`;
   } else if (task.department_name) {
     targetDisplay = `👥 Toàn bộ [Phòng ${task.department_name}]`;
   } else {
@@ -82,10 +84,12 @@ export function formatTaskMessage(task: Task, extraNote?: string): string {
   }[task.priority || 'NORMAL'];
 
   let targetDisplay = '';
+  const titlePart = task.assignee_title ? ` - ${task.assignee_title}` : '';
+
   if (task.assignee_username) {
-    targetDisplay = `@${task.assignee_username} (${task.assignee_name})`;
+    targetDisplay = `@${task.assignee_username} (${task.assignee_name}${titlePart})`;
   } else if (task.assignee_name) {
-    targetDisplay = `${task.assignee_name}`;
+    targetDisplay = `${task.assignee_name}${titlePart}`;
   } else if (task.department_name) {
     targetDisplay = `👥 Toàn bộ [Phòng ${task.department_name}]`;
   } else {

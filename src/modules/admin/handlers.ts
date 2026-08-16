@@ -59,8 +59,10 @@ export class AdminHandlers {
       help += `• **Xóa:** \`/del_dept <mã>\` (vd: \`/del_dept media\`)\n`;
       help += `• **Xem:** \`/departments\`\n\n`;
 
-      help += `👥 **2. Quản lý Nhân Sự & Phân Quyền (CRUD):**\n`;
-      help += `• **Gán phòng:** \`/set_dept @username <mã_phòng>\` (hoặc reply \`/set_dept <mã>\`)\n`;
+      help += `👥 **2. Quản lý Nhân Sự, Chức Vụ & Phân Quyền (CRUD):**\n`;
+      help += `• **Gán phòng & Chức vụ (Gộp):** \`/set_user @username <mã_phòng> <Chức vụ>\` (vd: \`/set_user @nam mkt Trưởng Phòng\`)\n`;
+      help += `• **Đổi chức vụ:** \`/set_title @username <Chức vụ mới>\` (vd: \`/set_title @nam Phó Giám Đốc\`)\n`;
+      help += `• **Gán phòng lẻ:** \`/set_dept @username <mã_phòng>\` (hoặc reply \`/set_dept <mã>\`)\n`;
       help += `• **Xóa khỏi phòng:** \`/remove_dept @username\` (hoặc reply \`/remove_dept\`)\n`;
       help += `• **Phân quyền:** \`/set_role @username ADMIN\` (hoặc reply \`/set_role ADMIN\`)\n`;
       help += `• **Xóa tài khoản:** \`/del_user @username\` (hoặc reply \`/del_user\`)\n`;
@@ -119,7 +121,8 @@ export class AdminHandlers {
         msg += `🏢 **Phòng ${d.name}:**\n`;
         for (const m of deptMembers) {
           const userTag = m.username ? `@${m.username}` : `(ID: ${m.telegram_id})`;
-          msg += `  • ${m.full_name} (${userTag}) - [${m.role}]\n`;
+          const titleText = m.title ? ` - 💼 ${m.title}` : '';
+          msg += `  • ${m.full_name} (${userTag})${titleText} [${m.role}]\n`;
         }
         msg += '\n';
       }
@@ -130,11 +133,169 @@ export class AdminHandlers {
       msg += `❓ **Chưa phân phòng ban:**\n`;
       for (const m of unassigned) {
         const userTag = m.username ? `@${m.username}` : `(ID: ${m.telegram_id})`;
-        msg += `  • ${m.full_name} (${userTag}) - [${m.role}]\n`;
+        const titleText = m.title ? ` - 💼 ${m.title}` : '';
+        msg += `  • ${m.full_name} (${userTag})${titleText} [${m.role}]\n`;
       }
     }
 
     await ctx.reply(msg, { parse_mode: 'Markdown' });
+  }
+
+  /**
+   * /set_user [@username] <mã_phòng> <Chức vụ> (hoặc Reply tin nhắn)
+   */
+  public static async handleSetUser(ctx: Context) {
+    const senderId = ctx.from?.id;
+    if (!senderId || !UserService.isAdmin(senderId)) {
+      await ctx.reply('⚠️ Bạn không có quyền thực hiện lệnh này.');
+      return;
+    }
+
+    const text = (ctx.message?.text || '').replace(/^\/set_user(@\w+)?\s*/i, '').trim();
+    const parts = text.split(/\s+/);
+    const repliedUser = ctx.message?.reply_to_message?.from;
+
+    let targetUsername = '';
+    let deptInput = '';
+    let titleInput = '';
+
+    // Trường hợp 1: Reply tin nhắn của nhân viên và gõ /set_user <mã_phòng> <Chức vụ>
+    if (repliedUser && parts.length >= 2 && !parts[0].startsWith('@')) {
+      deptInput = parts[0].toLowerCase();
+      titleInput = parts.slice(1).join(' ');
+
+      const dept = DepartmentService.findByNameOrSlug(deptInput);
+      if (!dept) {
+        await ctx.reply(`❌ Không tìm thấy phòng ban "${deptInput}". Gõ \`/departments\` để xem danh sách.`);
+        return;
+      }
+
+      UserService.upsertUser(repliedUser.id, repliedUser.username, repliedUser.first_name);
+      UserService.setDepartment(repliedUser.id, dept.id);
+      UserService.setTitle(repliedUser.id, titleInput);
+
+      let targetRole: 'ADMIN' | 'MANAGER' | 'EMPLOYEE' = 'EMPLOYEE';
+      if (/trưởng|phó|leader|quản lý|manager|director|giám đốc|chủ nhiệm/i.test(titleInput)) {
+        targetRole = 'MANAGER';
+        if (!UserService.isAdmin(repliedUser.id)) {
+          UserService.setRole(repliedUser.id, 'MANAGER');
+        }
+      }
+
+      const userTag = repliedUser.username ? `@${repliedUser.username}` : repliedUser.first_name;
+      await ctx.reply(
+        `✅ **ĐÃ THIẾT LẬP NHÂN SỰ:**\n\n` +
+        `👤 **Nhân sự:** **${repliedUser.first_name}** (${userTag})\n` +
+        `🏢 **Phòng ban:** Phòng ${dept.name}\n` +
+        `💼 **Chức vụ:** ${titleInput}\n` +
+        `🔑 **Quyền:** ${targetRole}`,
+        { parse_mode: 'Markdown' }
+      );
+      return;
+    }
+
+    // Trường hợp 2: Gõ /set_user @username <mã_phòng> <Chức vụ>
+    if (parts.length < 3) {
+      await ctx.reply(
+        '👉 **Cú pháp gán Phòng ban & Chức vụ:**\n\n' +
+        '1. `/set_user @username <mã_phòng> <Chức vụ>`\n' +
+        '   _Ví dụ:_ `/set_user @nam mkt Trưởng Phòng Marketing`\n' +
+        '   _Ví dụ:_ `/set_user @hoa sales Chuyên Viên Bán Hàng`\n\n' +
+        '2. Hoặc **Reply tin nhắn** và gõ: `/set_user <mã_phòng> <Chức vụ>`',
+        { parse_mode: 'Markdown' }
+      );
+      return;
+    }
+
+    targetUsername = parts[0].replace(/^@/, '');
+    deptInput = parts[1].toLowerCase();
+    titleInput = parts.slice(2).join(' ');
+
+    const dept = DepartmentService.findByNameOrSlug(deptInput);
+    if (!dept) {
+      await ctx.reply(`❌ Không tìm thấy phòng ban "${deptInput}". Gõ \`/departments\` để xem danh sách.`);
+      return;
+    }
+
+    const result = UserService.setUserDeptAndTitle(targetUsername, dept.id, titleInput);
+
+    if (result.status === 'UPDATED') {
+      await ctx.reply(
+        `✅ **ĐÃ THIẾT LẬP NHÂN SỰ:**\n\n` +
+        `👤 **Nhân sự:** **${result.fullName}** (@${targetUsername})\n` +
+        `🏢 **Phòng ban:** Phòng ${dept.name}\n` +
+        `💼 **Chức vụ:** ${titleInput}\n` +
+        `🔑 **Quyền:** ${result.appliedRole}`,
+        { parse_mode: 'Markdown' }
+      );
+    } else {
+      await ctx.reply(
+        `✅ **ĐÃ GÁN TRƯỚC THÔNG TIN NHÂN SỰ:**\n\n` +
+        `👤 **Username:** @${targetUsername}\n` +
+        `🏢 **Phòng ban:** Phòng ${dept.name}\n` +
+        `💼 **Chức vụ:** ${titleInput}\n` +
+        `🔑 **Quyền:** ${result.appliedRole}\n\n` +
+        `_Thông tin sẽ tự động kích hoạt ngay khi @${targetUsername} tương tác với Bot._`,
+        { parse_mode: 'Markdown' }
+      );
+    }
+  }
+
+  /**
+   * /set_title [@username] <Chức vụ mới> (hoặc Reply tin nhắn)
+   */
+  public static async handleSetTitle(ctx: Context) {
+    const senderId = ctx.from?.id;
+    if (!senderId || !UserService.isAdmin(senderId)) {
+      await ctx.reply('⚠️ Bạn không có quyền thực hiện lệnh này.');
+      return;
+    }
+
+    const text = (ctx.message?.text || '').replace(/^\/set_title(@\w+)?\s*/i, '').trim();
+    const parts = text.split(/\s+/);
+    const repliedUser = ctx.message?.reply_to_message?.from;
+
+    // Trường hợp 1: Reply tin nhắn và gõ /set_title <Chức vụ mới>
+    if (repliedUser && parts.length >= 1 && !parts[0].startsWith('@')) {
+      const title = text;
+      UserService.upsertUser(repliedUser.id, repliedUser.username, repliedUser.first_name);
+      UserService.setTitle(repliedUser.id, title);
+
+      const userTag = repliedUser.username ? `@${repliedUser.username}` : repliedUser.first_name;
+      await ctx.reply(`✅ Đã cập nhật chức vụ cho **${repliedUser.first_name}** (${userTag}) thành: **${title}**!`, {
+        parse_mode: 'Markdown',
+      });
+      return;
+    }
+
+    // Trường hợp 2: Gõ /set_title @username <Chức vụ mới>
+    if (parts.length < 2) {
+      await ctx.reply(
+        '👉 **Cú pháp đổi chức vụ:**\n' +
+        '1. `/set_title @username <Chức vụ mới>`\n' +
+        '   _Ví dụ:_ `/set_title @nam Phó Giám Đốc`\n' +
+        '2. Hoặc **Reply tin nhắn** của nhân viên và gõ: `/set_title <Chức vụ mới>`',
+        { parse_mode: 'Markdown' }
+      );
+      return;
+    }
+
+    const targetUsername = parts[0].replace(/^@/, '');
+    const title = parts.slice(1).join(' ');
+
+    const result = UserService.setTitleByUsername(targetUsername, title);
+
+    if (result.status === 'UPDATED') {
+      await ctx.reply(`✅ Đã cập nhật chức vụ cho **${result.fullName}** (@${targetUsername}) thành: **${title}**!`, {
+        parse_mode: 'Markdown',
+      });
+    } else {
+      await ctx.reply(
+        `✅ Đã gán trước chức vụ **${title}** cho @${targetUsername}!\n` +
+        `_Chức vụ sẽ tự động kích hoạt ngay khi @${targetUsername} tương tác với Bot._`,
+        { parse_mode: 'Markdown' }
+      );
+    }
   }
 
   /**
