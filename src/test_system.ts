@@ -145,7 +145,17 @@ async function runTests() {
     throw new Error('Chức danh chưa được lưu chính xác!');
   }
 
-  console.log('\n🎉 TẤT CẢ 10/10 BÀI KIỂM THỬ ĐÃ PASS 100% THÀNH CÔNG!');
+  // 11. Kiểm tra Bảng Điều Khiển Admin & Quyền Hạn (Dashboard & Controls)
+  console.log('\n1️⃣1️⃣ Kiểm tra Bảng Điều Khiển Admin & Quyền Hạn (Admin Dashboard):');
+  const isAdminCheck = UserService.isAdmin(admin.telegram_id);
+  console.log(`   ✅ Kiểm tra quyền Super Admin ID (${admin.telegram_id}): ${isAdminCheck ? 'HỢP LỆ' : 'THẤT BẠI'}`);
+  if (!isAdminCheck) throw new Error('Quyền Admin của Super Admin bị lỗi!');
+
+  const isEmployeeAdmin = UserService.isAdmin(employee2.telegram_id);
+  console.log(`   ✅ Kiểm tra phân quyền Employee (@hoa_marketing): ${!isEmployeeAdmin ? 'BẢO MẬT TỐT (Không phải Admin)' : 'LỖI PHÂN QUYỀN'}`);
+  if (isEmployeeAdmin) throw new Error('Employee không được phép có quyền Admin!');
+
+  console.log('\n🎉 TẤT CẢ 11/11 BÀI KIỂM THỬ ĐÃ PASS 100% THÀNH CÔNG!');
   Database.close();
 }
 

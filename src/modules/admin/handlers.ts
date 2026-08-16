@@ -1,9 +1,24 @@
-import { Context } from 'grammy';
+import { Context, InlineKeyboard } from 'grammy';
 import { UserService } from '../users/service';
 import { DepartmentService } from '../departments/service';
 import { TaskService } from '../tasks/service';
+import { MeetingService } from '../meetings/service';
+import { CONFIG } from '../../config/env';
 
 export class AdminHandlers {
+  public static getDashboardKeyboard(): InlineKeyboard {
+    return new InlineKeyboard()
+      .text('🏢 Phòng Ban', 'admin:dept_menu')
+      .text('👥 Nhân Sự', 'admin:user_menu')
+      .row()
+      .text('📌 Công Việc', 'admin:task_menu')
+      .text('📅 Lịch Họp', 'admin:meeting_menu')
+      .row()
+      .text('📢 Phát Thông Báo', 'admin:broadcast_info')
+      .text('📊 Báo Cáo KPI', 'admin:stats')
+      .row()
+      .text('👑 Danh Sách Admin', 'admin:admins_list');
+  }
   /**
    * /start: Đăng ký người dùng và hiển thị menu chính
    */
@@ -659,5 +674,265 @@ export class AdminHandlers {
     }
 
     await ctx.reply(msg, { parse_mode: 'Markdown' });
+  }
+
+  /**
+   * /admin hoặc /dashboard: Bảng điều khiển quản trị một chạm
+   */
+  public static async handleDashboard(ctx: Context) {
+    const senderId = ctx.from?.id;
+    if (!senderId || !UserService.isAdmin(senderId)) {
+      await ctx.reply('⚠️ Lệnh này chỉ dành cho Quản trị viên (Admin / Manager).');
+      return;
+    }
+
+    const user = UserService.getById(senderId);
+    const roleTitle = user?.role === 'ADMIN' ? '👑 Ban Giám Đốc (Admin)' : '⭐ Trưởng Phòng (Manager)';
+    const senderName = ctx.from?.username ? `@${ctx.from.username}` : ctx.from?.first_name;
+
+    let msg = `👑 **BẢNG ĐIỀU KHIỂN QUẢN TRỊ (ADMIN DASHBOARD)** 👑\n\n`;
+    msg += `Xin chào **${senderName}** (${roleTitle})!\n`;
+    msg += `👉 Vui lòng chạm vào các nút bên dưới để điều hành công ty:`;
+
+    await ctx.reply(msg, {
+      parse_mode: 'Markdown',
+      reply_markup: AdminHandlers.getDashboardKeyboard(),
+    });
+  }
+
+  /**
+   * /admins: Xem danh sách toàn bộ Quản trị viên công ty
+   */
+  public static async handleAdminsList(ctx: Context) {
+    const senderId = ctx.from?.id;
+    if (!senderId || !UserService.isAdmin(senderId)) {
+      await ctx.reply('⚠️ Lệnh này chỉ dành cho Quản trị viên.');
+      return;
+    }
+
+    const users = UserService.getAll();
+    const adminUsers = users.filter(u => u.role === 'ADMIN' || u.role === 'MANAGER');
+
+    let msg = `👑 **DANH SÁCH BAN QUẢN TRỊ CÔNG TY**\n\n`;
+
+    if (CONFIG.ADMIN_IDS.length > 0) {
+      msg += `🌟 **Super Admin (Cấu hình hệ thống):**\n`;
+      for (const id of CONFIG.ADMIN_IDS) {
+        const u = users.find(x => x.telegram_id === id);
+        const tag = u ? `${u.full_name} (@${u.username || id})` : `Telegram ID: \`${id}\``;
+        msg += `  • ${tag} - 👑 SUPER ADMIN\n`;
+      }
+      msg += '\n';
+    }
+
+    msg += `👥 **Quản Trị Viên & Quản Lý (${adminUsers.length}):**\n`;
+    if (adminUsers.length === 0) {
+      msg += `_Chưa có nhân sự nào được phân quyền Admin/Manager._\n`;
+    } else {
+      for (const a of adminUsers) {
+        const userTag = a.username ? `@${a.username}` : `(ID: ${a.telegram_id})`;
+        const titleText = a.title ? ` - 💼 ${a.title}` : '';
+        const deptText = a.department_name ? ` [Phòng ${a.department_name}]` : '';
+        msg += `  • ${a.full_name} (${userTag})${titleText}${deptText} - \`${a.role}\`\n`;
+      }
+    }
+
+    msg += `\n👉 Dùng \`/set_role @username ADMIN\` để cấp thêm quyền quản trị.`;
+    await ctx.reply(msg, { parse_mode: 'Markdown' });
+  }
+
+  /**
+   * /broadcast <nội dung> hoặc /thong_bao <nội dung>: Phát thông báo toàn công ty
+   */
+  public static async handleBroadcast(ctx: Context) {
+    const senderId = ctx.from?.id;
+    if (!senderId || !UserService.isAdmin(senderId)) {
+      await ctx.reply('⚠️ Chỉ Quản trị viên mới có quyền phát thông báo toàn công ty.');
+      return;
+    }
+
+    const text = (ctx.message?.text || '').replace(/^\/(broadcast|thong_bao|announcement)(@\w+)?\s*/i, '').trim();
+
+    if (!text) {
+      await ctx.reply(
+        '📢 **Hướng dẫn phát thông báo toàn công ty:**\n\n' +
+        '👉 Cú pháp: `/broadcast <Nội dung thông báo>`\n' +
+        '💡 Ví dụ: `/broadcast Chiều nay 16h họp khẩn toàn thể công ty tại phòng họp lớn!`',
+        { parse_mode: 'Markdown' }
+      );
+      return;
+    }
+
+    const user = UserService.getById(senderId);
+    const senderName = user ? (user.username ? `@${user.username}` : user.full_name) : (ctx.from?.username ? `@${ctx.from.username}` : ctx.from?.first_name);
+    const titlePart = user?.title ? ` - 💼 ${user.title}` : '';
+    const nowStr = new Date().toLocaleString('vi-VN', { timeZone: CONFIG.TIMEZONE });
+
+    let announceMsg = `📢 **THÔNG BÁO TỪ BAN LÃNH ĐẠO** 📢\n\n`;
+    announceMsg += `👤 **Người gửi:** ${senderName}${titlePart}\n`;
+    announceMsg += `⏰ **Thời gian:** \`${nowStr}\`\n\n`;
+    announceMsg += `📝 **Nội dung:**\n${text}\n\n`;
+    announceMsg += `⚠️ _Đề nghị toàn thể nhân sự chú ý theo dõi và thực hiện nghiêm túc!_`;
+
+    let sentCount = 0;
+
+    // Gửi vào nhóm hiện tại
+    await ctx.reply(announceMsg, { parse_mode: 'Markdown' });
+    sentCount++;
+
+    // Nếu có cấu hình MAIN_GROUP_ID và khác nhóm hiện tại -> Gửi thêm vào Main Group
+    if (CONFIG.MAIN_GROUP_ID && ctx.chat?.id.toString() !== CONFIG.MAIN_GROUP_ID) {
+      await ctx.api.sendMessage(CONFIG.MAIN_GROUP_ID, announceMsg, { parse_mode: 'Markdown' }).catch(console.error);
+      sentCount++;
+    }
+
+    await ctx.reply(`✅ Đã phát thông báo thành công đến ${sentCount} kênh/nhóm!`);
+  }
+
+  /**
+   * Xử lý tương tác nút bấm trong Bảng điều khiển Admin
+   */
+  public static async handleCallback(ctx: Context) {
+    const callbackData = ctx.callbackQuery?.data;
+    const userId = ctx.from?.id;
+    if (!callbackData || !userId) return;
+
+    if (!UserService.isAdmin(userId)) {
+      await ctx.answerCallbackQuery({ text: '⚠️ Bạn không có quyền truy cập menu Quản trị.' });
+      return;
+    }
+
+    await ctx.answerCallbackQuery();
+
+    // 1. Menu Phòng ban
+    if (callbackData === 'admin:dept_menu') {
+      const depts = DepartmentService.getAll();
+      let text = `🏢 **QUẢN TRỊ PHÒNG BAN (${depts.length} phòng)**\n\n`;
+      for (const d of depts) {
+        text += `• \`${d.id}\`: **${d.name}**\n`;
+      }
+      text += `\n💡 **Lệnh thao tác:**\n`;
+      text += `• Thêm phòng: \`/add_dept <mã> <tên>\`\n`;
+      text += `• Đổi tên phòng: \`/edit_dept <mã> <tên_mới>\`\n`;
+      text += `• Xóa phòng: \`/del_dept <mã>\``;
+
+      const kb = new InlineKeyboard()
+        .text('🔙 Quay lại Bảng điều khiển', 'admin:back_dashboard');
+
+      await ctx.editMessageText(text, { parse_mode: 'Markdown', reply_markup: kb });
+    }
+
+    // 2. Menu Nhân sự
+    else if (callbackData === 'admin:user_menu') {
+      const users = UserService.getAll();
+      let text = `👥 **QUẢN TRỊ NHÂN SỰ (${users.length} thành viên)**\n\n`;
+      text += `💡 **Lệnh thao tác nhanh:**\n`;
+      text += `• Gán phòng & chức vụ: \`/set_user @user <phòng> <chức_vụ>\`\n`;
+      text += `• Đổi chức vụ: \`/set_title @user <chức_vụ_mới>\`\n`;
+      text += `• Phân quyền Sếp: \`/set_role @user ADMIN\`\n`;
+      text += `• Xóa nhân sự: \`/del_user @user\`\n`;
+      text += `• Xem toàn bộ danh bạ: \`/members\``;
+
+      const kb = new InlineKeyboard()
+        .text('🔙 Quay lại Bảng điều khiển', 'admin:back_dashboard');
+
+      await ctx.editMessageText(text, { parse_mode: 'Markdown', reply_markup: kb });
+    }
+
+    // 3. Menu Công việc
+    else if (callbackData === 'admin:task_menu') {
+      const stats = TaskService.getStats();
+      let text = `📌 **QUẢN TRỊ CÔNG VIỆC**\n\n`;
+      text += `• 📁 Tổng số việc: \`${stats.total || 0}\`\n`;
+      text += `• ⏳ Đang chờ nhận: \`${stats.pending || 0}\`\n`;
+      text += `• ⚙️ Đang xử lý: \`${stats.in_progress || 0}\`\n`;
+      text += `• 🔴 Quá hạn: \`${stats.overdue || 0}\`\n\n`;
+      text += `💡 **Lệnh thao tác:**\n`;
+      text += `• Giao việc: \`/task @user <nội dung> hạn: 17h\`\n`;
+      text += `• Giao cả phòng: \`/task_dept <phòng> <nội dung>\`\n`;
+      text += `• Xem tất cả: \`/all_tasks\``;
+
+      const kb = new InlineKeyboard()
+        .text('🔙 Quay lại Bảng điều khiển', 'admin:back_dashboard');
+
+      await ctx.editMessageText(text, { parse_mode: 'Markdown', reply_markup: kb });
+    }
+
+    // 4. Menu Lịch họp
+    else if (callbackData === 'admin:meeting_menu') {
+      const meetings = MeetingService.getUpcoming(5);
+      let text = `📅 **QUẢN TRỊ LỊCH HỌP (${meetings.length} cuộc họp sắp tới)**\n\n`;
+      for (const m of meetings) {
+        text += `• #${m.id}: **${m.title}** lúc \`${m.meeting_time}\`\n`;
+      }
+      text += `\n💡 **Lệnh thao tác:**\n`;
+      text += `• Lên lịch họp: \`/meeting <Tiêu đề> lúc: <thời gian> tại: <địa điểm>\`\n`;
+      text += `• Xem tất cả: \`/meetings\``;
+
+      const kb = new InlineKeyboard()
+        .text('🔙 Quay lại Bảng điều khiển', 'admin:back_dashboard');
+
+      await ctx.editMessageText(text, { parse_mode: 'Markdown', reply_markup: kb });
+    }
+
+    // 5. Hướng dẫn Phát thông báo
+    else if (callbackData === 'admin:broadcast_info') {
+      let text = `📢 **PHÁT THÔNG BÁO TOÀN CÔNG TY**\n\n`;
+      text += `👉 Hãy gửi lệnh theo cú pháp:\n`;
+      text += `\`/broadcast <Nội dung thông báo>\`\n\n`;
+      text += `💡 _Ví dụ:_ \`/broadcast Ngày mai 15h họp toàn công ty tại Tầng 2\``;
+
+      const kb = new InlineKeyboard()
+        .text('🔙 Quay lại Bảng điều khiển', 'admin:back_dashboard');
+
+      await ctx.editMessageText(text, { parse_mode: 'Markdown', reply_markup: kb });
+    }
+
+    // 6. Xem danh sách Admin
+    else if (callbackData === 'admin:admins_list') {
+      const users = UserService.getAll();
+      const adminUsers = users.filter(u => u.role === 'ADMIN' || u.role === 'MANAGER');
+
+      let text = `👑 **DANH SÁCH QUẢN TRỊ VIÊN (${adminUsers.length})**\n\n`;
+      for (const a of adminUsers) {
+        const userTag = a.username ? `@${a.username}` : `(ID: ${a.telegram_id})`;
+        const titleText = a.title ? ` - 💼 ${a.title}` : '';
+        text += `• ${a.full_name} (${userTag})${titleText} - \`${a.role}\`\n`;
+      }
+
+      const kb = new InlineKeyboard()
+        .text('🔙 Quay lại Bảng điều khiển', 'admin:back_dashboard');
+
+      await ctx.editMessageText(text, { parse_mode: 'Markdown', reply_markup: kb });
+    }
+
+    // 7. Báo cáo thống kê
+    else if (callbackData === 'admin:stats') {
+      const stats = TaskService.getStats();
+      let text = `📊 **BÁO CÁO TIẾN ĐỘ CÔNG VIỆC**\n\n`;
+      text += `📁 Tổng số việc: \`${stats.total || 0}\`\n`;
+      text += `⏳ Đang chờ nhận: \`${stats.pending || 0}\`\n`;
+      text += `⚙️ Đang xử lý: \`${stats.in_progress || 0}\`\n`;
+      text += `✅ Đã hoàn thành: \`${stats.completed || 0}\`\n`;
+      text += `🔴 Quá hạn: \`${stats.overdue || 0}\`\n`;
+
+      const kb = new InlineKeyboard()
+        .text('🔙 Quay lại Bảng điều khiển', 'admin:back_dashboard');
+
+      await ctx.editMessageText(text, { parse_mode: 'Markdown', reply_markup: kb });
+    }
+
+    // 8. Quay lại Dashboard chính
+    else if (callbackData === 'admin:back_dashboard') {
+      const senderName = ctx.from?.username ? `@${ctx.from.username}` : ctx.from?.first_name;
+      let text = `👑 **BẢNG ĐIỀU KHIỂN QUẢN TRỊ (ADMIN DASHBOARD)** 👑\n\n`;
+      text += `Xin chào **${senderName}**!\n`;
+      text += `👉 Vui lòng chạm vào các nút bên dưới để điều hành công ty:`;
+
+      await ctx.editMessageText(text, {
+        parse_mode: 'Markdown',
+        reply_markup: AdminHandlers.getDashboardKeyboard(),
+      });
+    }
   }
 }

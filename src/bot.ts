@@ -33,6 +33,9 @@ export function createBot(): Bot {
   // 3. Các lệnh hệ thống & Quản trị Phòng ban / Nhân sự
   bot.command('start', AdminHandlers.handleStart);
   bot.command('help', AdminHandlers.handleHelp);
+  bot.command(['admin', 'dashboard'], AdminHandlers.handleDashboard);
+  bot.command('admins', AdminHandlers.handleAdminsList);
+  bot.command(['broadcast', 'thong_bao', 'announcement'], AdminHandlers.handleBroadcast);
   bot.command('departments', AdminHandlers.handleDepartments);
   bot.command('members', AdminHandlers.handleMembers);
   bot.command('set_user', AdminHandlers.handleSetUser);
@@ -61,11 +64,13 @@ export function createBot(): Bot {
   bot.command('meetings', MeetingHandlers.handleGetMeetings);
   bot.command(['del_meeting', 'cancel_meeting'], MeetingHandlers.handleDelMeeting);
 
-  // 6. Xử lý Callback từ các nút bấm Inline (Task & Meeting & Overdue Extension)
+  // 6. Xử lý Callback từ các nút bấm Inline (Admin & Task & Meeting & Overdue Extension)
   bot.on('callback_query:data', async (ctx) => {
     const data = ctx.callbackQuery?.data;
     if (data?.startsWith('meeting:')) {
       await MeetingHandlers.handleCallback(ctx);
+    } else if (data?.startsWith('admin:')) {
+      await AdminHandlers.handleCallback(ctx);
     } else {
       await TaskHandlers.handleCallback(ctx);
     }
