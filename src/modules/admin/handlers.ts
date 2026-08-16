@@ -43,28 +43,35 @@ export class AdminHandlers {
     const senderId = ctx.from?.id;
     const isAdmin = senderId ? UserService.isAdmin(senderId) : false;
 
-    let help = `📖 **HƯỚNG DẪN SỬ DỤNG BOT GIAO VIỆC CÔNG TY**\n\n`;
+    let help = `📖 **HỆ THỐNG LỆNH QUẢN TRỊ & GIAO VIỆC (FULL CRUD)**\n\n`;
 
     help += `👤 **Dành cho Nhân viên:**\n`;
-    help += `1️⃣ Khi được giao việc, Bot sẽ tự động **@tag tên bạn** trong nhóm.\n`;
-    help += `2️⃣ Bấm nút **[🚀 Nhận việc]** để báo cho Sếp biết bạn đã bắt đầu làm.\n`;
-    help += `3️⃣ Khi làm xong, bấm **[✅ Hoàn thành]** để hoàn tất task.\n`;
-    help += `• \`/my_tasks\`: Xem công việc cá nhân cần làm.\n\n`;
+    help += `• \`/my_tasks\`: Xem danh sách việc của mình\n`;
+    help += `• Bấm **[🚀 Nhận việc]** / **[✅ Hoàn thành]** dưới mỗi thông báo\n`;
+    help += `• \`/departments\`: Xem danh sách phòng ban công ty\n\n`;
 
     if (isAdmin) {
-      help += `👑 **Dành cho Sếp / Quản trị viên:**\n`;
-      help += `• **Giao việc cá nhân:**\n`;
-      help += `  \`/task @nam Viết bài PR sản phẩm mới hạn: 2026-08-20 17:00 [gấp]\`\n\n`;
+      help += `👑 **Dành cho Sếp / Quản trị viên:**\n\n`;
 
-      help += `• **Giao việc cả phòng ban:**\n`;
-      help += `  \`/task_dept marketing Chuẩn bị tư liệu tuần sau hạn: 17h\`\n\n`;
+      help += `🏢 **1. Quản lý Phòng Ban (CRUD):**\n`;
+      help += `• **Thêm:** \`/add_dept <mã> <Tên phòng>\` (vd: \`/add_dept media Phòng Truyền Thông\`)\n`;
+      help += `• **Sửa tên:** \`/edit_dept <mã> <Tên mới>\` (vd: \`/edit_dept media Ban Media\`)\n`;
+      help += `• **Xóa:** \`/del_dept <mã>\` (vd: \`/del_dept media\`)\n`;
+      help += `• **Xem:** \`/departments\`\n\n`;
 
-      help += `• **Quản lý nhân sự & phòng ban:**\n`;
-      help += `  \`/set_role @username ADMIN\` (hoặc Reply tin nhắn gõ \`/set_role ADMIN\`)\n`;
-      help += `  \`/set_dept @username marketing\` (hoặc Reply tin nhắn gõ \`/set_dept marketing\`)\n`;
-      help += `  \`/add_dept <mã_phòng> <tên_phòng>\`: Thêm phòng ban mới\n`;
-      help += `  \`/members\`: Xem danh bạ nhân sự theo phòng ban\n`;
-      help += `  \`/stats\`: Xem chỉ số KPI và tiến độ toàn công ty\n`;
+      help += `👥 **2. Quản lý Nhân Sự & Phân Quyền (CRUD):**\n`;
+      help += `• **Gán phòng:** \`/set_dept @username <mã_phòng>\` (hoặc reply \`/set_dept <mã>\`)\n`;
+      help += `• **Xóa khỏi phòng:** \`/remove_dept @username\` (hoặc reply \`/remove_dept\`)\n`;
+      help += `• **Phân quyền:** \`/set_role @username ADMIN\` (hoặc reply \`/set_role ADMIN\`)\n`;
+      help += `• **Xóa tài khoản:** \`/del_user @username\` (hoặc reply \`/del_user\`)\n`;
+      help += `• **Xem danh bạ:** \`/members\`\n\n`;
+
+      help += `📌 **3. Quản lý Công Việc & Tiến Độ (CRUD):**\n`;
+      help += `• **Giao việc cá nhân:** \`/task @username <nội dung> [hạn: YYYY-MM-DD HH:mm] [gấp]\`\n`;
+      help += `• **Giao việc phòng ban:** \`/task_dept <mã_phòng> <nội dung> [hạn: ...]\`\n`;
+      help += `• **Sửa việc/deadline:** \`/edit_task <id> <nội dung mới> [hạn: ...]\`\n`;
+      help += `• **Xóa việc:** \`/del_task <id>\`\n`;
+      help += `• **Tổng hợp:** \`/all_tasks\`, \`/pending_tasks\`, \`/done_tasks\`, \`/stats\`\n`;
     }
 
     await ctx.reply(help, { parse_mode: 'Markdown' });
@@ -375,6 +382,94 @@ export class AdminHandlers {
       await ctx.reply(`🗑️ Đã xóa phòng ban **${dept.name}** (Mã: \`${dept.id}\`) khỏi hệ thống!`, { parse_mode: 'Markdown' });
     } else {
       await ctx.reply(`❌ Xóa phòng ban thất bại.`, { parse_mode: 'Markdown' });
+    }
+  }
+
+  /**
+   * /edit_dept <mã_phòng> <tên_mới>
+   */
+  public static async handleEditDept(ctx: Context) {
+    const senderId = ctx.from?.id;
+    if (!senderId || !UserService.isAdmin(senderId)) {
+      await ctx.reply('⚠️ Bạn không có quyền thực hiện lệnh này.');
+      return;
+    }
+
+    const text = (ctx.message?.text || '').replace(/^\/(edit_dept|rename_dept)(@\w+)?\s*/i, '').trim();
+    const parts = text.split(/\s+/);
+
+    if (parts.length < 2) {
+      await ctx.reply(
+        '👉 **Cú pháp sửa tên phòng ban:**\n' +
+        '`/edit_dept <mã_phòng> <Tên mới>`\n' +
+        'Ví dụ: `/edit_dept tech Phòng Kỹ Thuật & Công Nghệ`',
+        { parse_mode: 'Markdown' }
+      );
+      return;
+    }
+
+    const id = parts[0].toLowerCase();
+    const newName = parts.slice(1).join(' ');
+
+    const dept = DepartmentService.getById(id);
+    if (!dept) {
+      await ctx.reply(`❌ Không tìm thấy phòng ban nào có mã là "${id}". Gõ \`/departments\` để xem danh sách.`, {
+        parse_mode: 'Markdown',
+      });
+      return;
+    }
+
+    const success = DepartmentService.update(id, newName);
+    if (success) {
+      await ctx.reply(`✏️ Đã đổi tên phòng ban \`${id}\` thành: **${newName}**!`, { parse_mode: 'Markdown' });
+    } else {
+      await ctx.reply(`❌ Cập nhật tên phòng ban thất bại.`, { parse_mode: 'Markdown' });
+    }
+  }
+
+  /**
+   * /del_user [@username] (hoặc Reply tin nhắn)
+   */
+  public static async handleDelUser(ctx: Context) {
+    const senderId = ctx.from?.id;
+    if (!senderId || !UserService.isAdmin(senderId)) {
+      await ctx.reply('⚠️ Bạn không có quyền thực hiện lệnh này.');
+      return;
+    }
+
+    const text = (ctx.message?.text || '').replace(/^\/(del_user|remove_user)(@\w+)?\s*/i, '').trim();
+    const repliedUser = ctx.message?.reply_to_message?.from;
+
+    if (repliedUser) {
+      UserService.deleteUser(repliedUser.id);
+      const userTag = repliedUser.username ? `@${repliedUser.username}` : repliedUser.first_name;
+      await ctx.reply(`🗑️ Đã xóa hoàn toàn người dùng **${repliedUser.first_name}** (${userTag}) khỏi hệ thống!`, {
+        parse_mode: 'Markdown',
+      });
+      return;
+    }
+
+    if (!text) {
+      await ctx.reply(
+        '👉 **Cú pháp xóa người dùng:**\n' +
+        '1. `/del_user @username` (Ví dụ: `/del_user @nam`)\n' +
+        '2. Hoặc **Reply tin nhắn** của người đó và gõ: `/del_user`',
+        { parse_mode: 'Markdown' }
+      );
+      return;
+    }
+
+    const targetUsername = text.replace(/^@/, '').trim();
+    const result = UserService.deleteUserByUsername(targetUsername);
+
+    if (result.status === 'DELETED') {
+      await ctx.reply(`🗑️ Đã xóa hoàn toàn người dùng **${result.fullName}** (@${targetUsername}) khỏi hệ thống!`, {
+        parse_mode: 'Markdown',
+      });
+    } else {
+      await ctx.reply(`🗑️ Đã xóa bản ghi chờ của @${targetUsername} khỏi hệ thống!`, {
+        parse_mode: 'Markdown',
+      });
     }
   }
 

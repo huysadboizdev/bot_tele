@@ -203,6 +203,37 @@ export class UserService {
     }
   }
 
+  /**
+   * Xóa hoàn toàn người dùng khỏi hệ thống
+   */
+  public static deleteUserByUsername(username: string): { status: 'DELETED' | 'NOT_FOUND', fullName?: string } {
+    const cleanUsername = username.replace(/^@/, '').toLowerCase().trim();
+    const user = UserService.getByUsername(cleanUsername);
+    const db = Database.getDb();
+
+    if (user) {
+      const stmt = db.prepare('DELETE FROM users WHERE telegram_id = ?');
+      stmt.run(user.telegram_id);
+      return { status: 'DELETED', fullName: user.full_name };
+    } else {
+      const stmt = db.prepare('DELETE FROM pending_assignments WHERE username = ?');
+      stmt.run(cleanUsername);
+      return { status: 'NOT_FOUND' };
+    }
+  }
+
+  public static deleteUser(telegramId: number): boolean {
+    const db = Database.getDb();
+    try {
+      const stmt = db.prepare('DELETE FROM users WHERE telegram_id = ?');
+      stmt.run(telegramId);
+      return true;
+    } catch (error) {
+      console.error('Error deleting user:', error);
+      return false;
+    }
+  }
+
   public static isAdmin(telegramId: number): boolean {
     if (CONFIG.ADMIN_IDS.includes(telegramId)) return true;
     const user = UserService.getById(telegramId);

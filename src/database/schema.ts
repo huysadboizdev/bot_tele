@@ -61,6 +61,12 @@ CREATE TABLE IF NOT EXISTS pending_assignments (
   department_id TEXT,
   created_at TEXT DEFAULT (datetime('now', 'localtime'))
 );
+
+-- Bảng lưu cấu hình hệ thống (tránh tự động nạp lại phòng ban khi Sếp đã xóa)
+CREATE TABLE IF NOT EXISTS system_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT
+);
 `;
 
 export const DEFAULT_DEPARTMENTS = [

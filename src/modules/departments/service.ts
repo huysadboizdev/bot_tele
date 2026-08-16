@@ -47,6 +47,22 @@ export class DepartmentService {
     }
   }
 
+  public static update(id: string, name: string, description?: string): boolean {
+    const db = Database.getDb();
+    try {
+      const stmt = db.prepare(`
+        UPDATE departments 
+        SET name = ?, description = COALESCE(?, description)
+        WHERE id = ?
+      `);
+      stmt.run(name.trim(), description || null, id.toLowerCase().trim());
+      return true;
+    } catch (error) {
+      console.error('Error updating department:', error);
+      return false;
+    }
+  }
+
   public static delete(id: string): boolean {
     const db = Database.getDb();
     try {

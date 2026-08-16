@@ -253,6 +253,45 @@ export class TaskService {
     return query.all() as unknown as Task[];
   }
 
+  public static updateTask(
+    taskId: number,
+    data: { title?: string; description?: string; deadline?: string | null; priority?: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT' }
+  ): Task | null {
+    const db = Database.getDb();
+    const task = TaskService.getById(taskId);
+    if (!task) return null;
+
+    const newTitle = data.title !== undefined ? data.title : task.title;
+    const newDesc = data.description !== undefined ? data.description : task.description;
+    const newDeadline = data.deadline !== undefined ? data.deadline : task.deadline;
+    const newPriority = data.priority !== undefined ? data.priority : task.priority;
+
+    const stmt = db.prepare(`
+      UPDATE tasks 
+      SET title = ?,
+          description = ?,
+          deadline = ?,
+          priority = ?,
+          updated_at = datetime('now', 'localtime')
+      WHERE id = ?
+    `);
+    stmt.run(newTitle, newDesc, newDeadline, newPriority, taskId);
+
+    return TaskService.getById(taskId);
+  }
+
+  public static deleteTask(taskId: number): boolean {
+    const db = Database.getDb();
+    try {
+      const stmt = db.prepare('DELETE FROM tasks WHERE id = ?');
+      stmt.run(taskId);
+      return true;
+    } catch (error) {
+      console.error('Error deleting task:', error);
+      return false;
+    }
+  }
+
   public static getStats() {
     const db = Database.getDb();
     const totalQuery = db.prepare(`

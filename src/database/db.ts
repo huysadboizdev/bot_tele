@@ -21,18 +21,27 @@ export class Database {
     // Khởi tạo các bảng
     Database.instance.exec(CREATE_TABLES_SQL);
 
-    // Khởi tạo phòng ban mặc định nếu chưa có
-    const countQuery = Database.instance.prepare('SELECT COUNT(*) as count FROM departments');
-    const result = countQuery.get() as { count: number };
+    // Kiểm tra xem đã từng khởi tạo phòng ban ban đầu chưa
+    const initCheck = Database.instance.prepare('SELECT value FROM system_settings WHERE key = ?');
+    const isInitialized = initCheck.get('init_seeded') as { value: string } | undefined;
 
-    if (result && result.count === 0) {
-      const insertDept = Database.instance.prepare(
-        'INSERT INTO departments (id, name, description) VALUES (?, ?, ?)'
-      );
-      for (const dept of DEFAULT_DEPARTMENTS) {
-        insertDept.run(dept.id, dept.name, dept.description);
+    if (!isInitialized) {
+      const countQuery = Database.instance.prepare('SELECT COUNT(*) as count FROM departments');
+      const result = countQuery.get() as { count: number };
+
+      if (result && result.count === 0) {
+        const insertDept = Database.instance.prepare(
+          'INSERT INTO departments (id, name, description) VALUES (?, ?, ?)'
+        );
+        for (const dept of DEFAULT_DEPARTMENTS) {
+          insertDept.run(dept.id, dept.name, dept.description);
+        }
+        console.log('✅ Đã khởi tạo các phòng ban mặc định ban đầu.');
       }
-      console.log('✅ Đã khởi tạo các phòng ban mặc định cho công ty.');
+
+      // Đánh dấu đã khởi tạo xong, sau này Sếp xóa phòng ban sẽ không bị tự nạp lại
+      const markInit = Database.instance.prepare('INSERT OR REPLACE INTO system_settings (key, value) VALUES (?, ?)');
+      markInit.run('init_seeded', 'true');
     }
   }
 

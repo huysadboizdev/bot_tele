@@ -1,48 +1,44 @@
-# 🤖 Telegram Bot Giao Việc & Quản Lý Công Việc Cho Công Ty
+# 🤖 Telegram Bot Giao Việc & Quản Lý Công Việc Cho Công Ty (Full CRUD)
 
-Telegram Bot quản lý công việc chuyên nghiệp cho doanh nghiệp: hỗ trợ **Giao việc đích danh (@tag nhân sự)**, **Giao việc theo phòng ban (tag đồng loạt cả nhóm)**, **Tương tác qua nút bấm Inline**, **Nhắc việc tự động 24/7**, tối ưu hóa cho **VPS Windows**.
-
----
-
-## 🌟 Tính Năng Nổi Bật
-
-1. 🎯 **Giao việc đích danh (@tag)**: Sếp giao việc bằng lệnh `/task @username <nội dung>`, Bot tự động tag username Telegram của nhân viên và hiển thị nút nhận việc.
-2. 👥 **Giao việc phòng ban**: Lệnh `/task_dept <phòng> <nội dung>` tự động tag toàn bộ thành viên trong phòng ban đó.
-3. 🚀 **Nút bấm Inline tương tác**:
-   - `[🚀 Nhận việc]`: Đổi trạng thái sang "Đang xử lý", thông báo cho Sếp.
-   - `[📝 Báo tiến độ]`: Ghi chú tiến độ thực hiện.
-   - `[✅ Hoàn thành]`: Đổi trạng thái sang "Đã xong" và ghi nhận thời gian.
-   - `[❌ Hủy task]`: Sếp hoặc người giao việc có thể hủy task bất kỳ lúc nào.
-4. ⏰ **Nhắc việc tự động 24/7 (Timezone GMT+7)**:
-   - Quét deadline mỗi 5 phút.
-   - Nhắc nhở trước 24h & Cảnh báo khẩn cấp trước 2h.
-   - **08:30 sáng**: Báo cáo danh sách việc cần làm trong ngày.
-   - **17:30 chiều**: Báo cáo tổng kết tiến độ (Hoàn thành / Đang làm / Quá hạn) gửi Sếp.
-5. 🗄️ **Cơ sở dữ liệu SQLite siêu nhẹ**: Lưu toàn bộ trong 1 file `.sqlite`, không cần cài đặt SQL Server / MySQL.
+Telegram Bot quản lý công việc chuyên nghiệp cho doanh nghiệp: hỗ trợ **Thêm - Sửa - Cập nhật - Xóa (CRUD)** đầy đủ cho Phòng Ban, Nhân Sự, và Công Việc, tích hợp **Giao việc đích danh (@tag nhân sự)**, **Giao việc theo phòng ban (tag đồng loạt)**, **Tương tác qua nút bấm Inline**, **Nhắc việc tự động 24/7**, tối ưu hóa cho **VPS Windows**.
 
 ---
 
-## 📋 Danh Sách Lệnh (Bot Commands)
+## 📋 Danh Sách Toàn Bộ Lệnh Quản Trị & Vận Hành (Full CRUD)
 
-### 👤 Dành cho Nhân viên:
-| Lệnh | Mô tả |
-| :--- | :--- |
-| `/start` | Đăng ký tài khoản vào hệ thống, xem thông tin phòng ban & vai trò |
-| `/my_tasks` | Xem danh sách công việc cá nhân cần thực hiện |
-| `/departments` | Xem danh sách tất cả phòng ban trong công ty |
-| `/help` | Xem hướng dẫn sử dụng chi tiết |
+### 🏢 1. Quản lý Phòng Ban (CRUD):
+| Hành động | Lệnh | Ví dụ | Mô tả |
+| :--- | :--- | :--- | :--- |
+| **Thêm (Create)** | `/add_dept` | `/add_dept media Phòng Truyền Thông` | Tạo phòng ban mới |
+| **Sửa (Update)** | `/edit_dept` | `/edit_dept media Ban Media & Video` | Đổi tên / cập nhật phòng ban |
+| **Xóa (Delete)** | `/del_dept` | `/del_dept media` | Xóa hoàn toàn phòng ban khỏi hệ thống |
+| **Xem (Read)** | `/departments` | `/departments` | Xem danh sách tất cả phòng ban |
 
-### 👑 Dành cho Sếp / Quản lý (Admin):
-| Lệnh | Cú pháp ví dụ | Mô tả |
-| :--- | :--- | :--- |
-| `/task` | `/task @nam Làm slide tuần sau hạn: 2026-08-20 17:00 [gấp]` | Giao việc cho nhân viên & tag tên |
-| `/task_dept` | `/task_dept marketing Chuẩn bị tư liệu hạn: 17h` | Giao việc cho toàn bộ phòng ban |
-| `/all_tasks` | `/all_tasks` | Xem 20 công việc mới nhất toàn công ty |
-| `/members` | `/members` | Xem danh bạ nhân sự phân theo phòng ban |
-| `/set_dept` | `/set_dept @nam marketing` | Gán nhân viên vào phòng ban |
-| `/set_role` | `/set_role @nam ADMIN` | Phân quyền (`ADMIN`, `MANAGER`, `EMPLOYEE`) |
-| `/add_dept` | `/add_dept cskh Chăm Sóc Khách Hàng` | Tạo phòng ban mới |
-| `/stats` | `/stats` | Xem báo cáo chỉ số tiến độ toàn công ty |
+---
+
+### 👥 2. Quản lý Nhân Sự & Phân Quyền (CRUD):
+| Hành động | Lệnh | Ví dụ | Mô tả |
+| :--- | :--- | :--- | :--- |
+| **Gán phòng** | `/set_dept` | `/set_dept @nam marketing` *(hoặc reply `/set_dept marketing`)* | Gán nhân viên vào phòng ban |
+| **Xóa khỏi phòng** | `/remove_dept` | `/remove_dept @nam` *(hoặc reply `/remove_dept`)* | Xóa nhân viên khỏi phòng ban |
+| **Phân quyền** | `/set_role` | `/set_role @nam ADMIN` *(hoặc reply `/set_role ADMIN`)* | Cấp quyền `ADMIN`, `MANAGER`, `EMPLOYEE` |
+| **Xóa tài khoản** | `/del_user` | `/del_user @nam` *(hoặc reply `/del_user`)* | Xóa nhân sự khỏi database hệ thống |
+| **Xem danh bạ** | `/members` | `/members` | Xem danh bạ nhân sự phân theo phòng ban |
+
+---
+
+### 📌 3. Quản lý Công Việc & Tiến Độ (CRUD):
+| Hành động | Lệnh | Ví dụ | Mô tả |
+| :--- | :--- | :--- | :--- |
+| **Giao việc cá nhân** | `/task` | `/task @nam Làm slide tuần sau hạn: 17h [gấp]` | Giao việc cho nhân viên & tag tên |
+| **Giao việc phòng ban**| `/task_dept` | `/task_dept marketing Chuẩn bị tư liệu hạn: 17h` | Giao việc cho toàn bộ phòng ban |
+| **Sửa việc / Deadline** | `/edit_task` | `/edit_task 1 Sửa lại slide và gửi trước 18h hạn: 18h` | Cập nhật nội dung & deadline task |
+| **Xóa công việc** | `/del_task` | `/del_task 1` | Xóa vĩnh viễn task khỏi hệ thống |
+| **Xem việc của mình** | `/my_tasks` | `/my_tasks` | Nhân viên xem danh sách việc cần làm |
+| **Xem toàn bộ việc** | `/all_tasks` | `/all_tasks` | Sếp xem 20 công việc mới nhất toàn công ty |
+| **Xem việc chờ nhận** | `/pending_tasks` | `/pending_tasks` | Danh sách các việc chưa có ai nhận |
+| **Xem việc đã xong** | `/done_tasks` | `/done_tasks` | Danh sách các việc đã hoàn thành |
+| **Xem báo cáo KPI** | `/stats` | `/stats` | Thống kê số lượng việc theo trạng thái |
 
 ---
 
@@ -50,14 +46,18 @@ Telegram Bot quản lý công việc chuyên nghiệp cho doanh nghiệp: hỗ t
 
 ### Bước 1: Chuẩn bị trên VPS
 1. Tải và cài đặt **[Node.js LTS](https://nodejs.org)** (Bản `.msi`). Bấm `Next` đến khi hoàn tất.
-2. Copy toàn bộ thư mục `bot_tele` vào VPS.
+2. Clone code từ GitHub:
+   ```cmd
+   git clone https://github.com/huysadboizdev/bot_tele.git
+   cd bot_tele
+   ```
 
 ### Bước 2: Cấu hình File `.env`
 Tạo file `.env` (nhân bản từ `.env.example`) và điền các thông tin:
 ```env
-BOT_TOKEN=123456789:AAH... (Token lấy từ @BotFather trên Telegram)
-ADMIN_IDS=123456789 (Telegram ID của bạn, lấy từ @userinfobot)
-MAIN_GROUP_ID=-1001234567890 (ID nhóm chat công ty nếu muốn gửi báo cáo vào nhóm)
+BOT_TOKEN=8123456789:AAH... (Token lấy từ @BotFather trên Telegram)
+ADMIN_IDS=7535121273 (Telegram ID của bạn)
+MAIN_GROUP_ID=-1004337699275 (ID nhóm chat công ty)
 TIMEZONE=Asia/Ho_Chi_Minh
 ```
 

@@ -21,7 +21,7 @@ export function createBot(): Bot {
     }
   });
 
-  // 2. Các lệnh hệ thống & Quản trị
+  // 2. Các lệnh hệ thống & Quản trị Phòng ban / Nhân sự
   bot.command('start', AdminHandlers.handleStart);
   bot.command('help', AdminHandlers.handleHelp);
   bot.command('departments', AdminHandlers.handleDepartments);
@@ -30,14 +30,20 @@ export function createBot(): Bot {
   bot.command(['remove_dept', 'unset_dept'], AdminHandlers.handleRemoveDept);
   bot.command('set_role', AdminHandlers.handleSetRole);
   bot.command('add_dept', AdminHandlers.handleAddDept);
+  bot.command(['edit_dept', 'rename_dept'], AdminHandlers.handleEditDept);
   bot.command(['del_dept', 'delete_dept'], AdminHandlers.handleDelDept);
+  bot.command(['del_user', 'remove_user'], AdminHandlers.handleDelUser);
   bot.command('stats', AdminHandlers.handleStats);
 
-  // 3. Các lệnh Giao việc & Quản lý Task
+  // 3. Các lệnh Giao việc & Quản lý Task (CRUD)
   bot.command('task', TaskHandlers.assignUserTask);
   bot.command('task_dept', TaskHandlers.assignDepartmentTask);
+  bot.command('edit_task', TaskHandlers.handleEditTask);
+  bot.command(['del_task', 'delete_task'], TaskHandlers.handleDelTask);
   bot.command('my_tasks', TaskHandlers.getMyTasks);
   bot.command('all_tasks', TaskHandlers.getAllTasks);
+  bot.command('pending_tasks', TaskHandlers.getPendingTasks);
+  bot.command('done_tasks', TaskHandlers.getDoneTasks);
 
   // 4. Xử lý Callback từ các nút bấm Inline (Nhận việc, Hoàn thành, Hủy)
   bot.on('callback_query:data', TaskHandlers.handleCallback);

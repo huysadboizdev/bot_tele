@@ -198,6 +198,146 @@ export class TaskHandlers {
   }
 
   /**
+   * /pending_tasks: Xem danh sách việc đang chờ nhận
+   */
+  public static async getPendingTasks(ctx: Context) {
+    const tasks = TaskService.getAll('PENDING', 20);
+    if (tasks.length === 0) {
+      await ctx.reply('✨ Không có công việc nào đang chờ nhận việc!');
+      return;
+    }
+
+    let msg = `⏳ **DANH SÁCH VIỆC ĐANG CHỜ NHẬN (${tasks.length})**\n\n`;
+    for (const t of tasks) {
+      const target = t.assignee_username ? `@${t.assignee_username}` : (t.department_name ? `Phòng ${t.department_name}` : 'Tất cả');
+      msg += `• **#${t.id}**: ${t.title}\n   🎯 Cho: ${target}\n`;
+    }
+    await ctx.reply(msg, { parse_mode: 'Markdown' });
+  }
+
+  /**
+   * /done_tasks: Xem danh sách việc đã hoàn thành
+   */
+  public static async getDoneTasks(ctx: Context) {
+    const tasks = TaskService.getAll('COMPLETED', 20);
+    if (tasks.length === 0) {
+      await ctx.reply('Chưa có công việc nào hoàn thành gần đây.');
+      return;
+    }
+
+    let msg = `✅ **DANH SÁCH VIỆC ĐÃ HOÀN THÀNH (Gần nhất ${tasks.length})**\n\n`;
+    for (const t of tasks) {
+      const target = t.assignee_username ? `@${t.assignee_username}` : (t.assignee_name || 'Nhân sự');
+      msg += `• **#${t.id}**: ${t.title} (${target})\n   🎉 Xong lúc: \`${t.completed_at || t.updated_at}\`\n`;
+    }
+    await ctx.reply(msg, { parse_mode: 'Markdown' });
+  }
+
+  /**
+   * /edit_task <id> <nội dung mới> [hạn: ...]
+   */
+  public static async handleEditTask(ctx: Context) {
+    const senderId = ctx.from?.id;
+    if (!senderId || !UserService.isAdmin(senderId)) {
+      await ctx.reply('⚠️ Chỉ Quản trị viên mới có quyền chỉnh sửa công việc.');
+      return;
+    }
+
+    const text = (ctx.message?.text || '').replace(/^\/edit_task(@\w+)?\s*/i, '').trim();
+    const parts = text.split(/\s+/);
+
+    if (parts.length < 2 || isNaN(Number(parts[0]))) {
+      await ctx.reply(
+        '👉 **Cú pháp sửa công việc:**\n' +
+        '`/edit_task <id_task> <Nội dung mới> [hạn: YYYY-MM-DD HH:mm]`\n' +
+        'Ví dụ: `/edit_task 1 Soạn lại slide và gửi trước 18h hạn: 18h [gấp]`',
+        { parse_mode: 'Markdown' }
+      );
+      return;
+    }
+
+    const taskId = Number(parts[0]);
+    const rawContent = parts.slice(1).join(' ');
+    const task = TaskService.getById(taskId);
+
+    if (!task) {
+      await ctx.reply(`❌ Không tìm thấy công việc với ID #${taskId}.`);
+      return;
+    }
+
+    // Phân tích deadline & priority nếu có trong nội dung mới
+    let newPriority = task.priority;
+    let newDeadline = task.deadline;
+    let cleanTitle = rawContent;
+
+    if (/gấp|khẩn cấp|urgent/i.test(cleanTitle)) {
+      newPriority = 'URGENT';
+      cleanTitle = cleanTitle.replace(/(\[?(gấp|khẩn cấp|urgent)\]?)/gi, '').trim();
+    }
+
+    const deadlineRegex = /(?:hạn|deadline|trước|due):\s*([0-9:\-\/\sA-Za-z]+)$/i;
+    const deadlineMatch = cleanTitle.match(deadlineRegex);
+    if (deadlineMatch) {
+      newDeadline = TaskParser.standardizeDeadline(deadlineMatch[1].trim());
+      cleanTitle = cleanTitle.replace(deadlineMatch[0], '').trim();
+    }
+
+    const updated = TaskService.updateTask(taskId, {
+      title: cleanTitle,
+      description: cleanTitle,
+      deadline: newDeadline,
+      priority: newPriority,
+    });
+
+    if (updated) {
+      await ctx.reply(`✏️ Đã cập nhật công việc **#${taskId}** thành công!\n\n` + formatTaskMessage(updated), {
+        parse_mode: 'Markdown',
+        reply_markup: getTaskKeyboard(updated),
+      });
+    } else {
+      await ctx.reply(`❌ Cập nhật công việc #${taskId} thất bại.`);
+    }
+  }
+
+  /**
+   * /del_task <id>
+   */
+  public static async handleDelTask(ctx: Context) {
+    const senderId = ctx.from?.id;
+    if (!senderId || !UserService.isAdmin(senderId)) {
+      await ctx.reply('⚠️ Chỉ Quản trị viên mới có quyền xóa công việc.');
+      return;
+    }
+
+    const text = (ctx.message?.text || '').replace(/^\/(del_task|delete_task)(@\w+)?\s*/i, '').trim();
+    const taskId = Number(text);
+
+    if (!text || isNaN(taskId)) {
+      await ctx.reply(
+        '👉 **Cú pháp xóa công việc:**\n' +
+        '`/del_task <id_task>`\nVí dụ: `/del_task 1`',
+        { parse_mode: 'Markdown' }
+      );
+      return;
+    }
+
+    const task = TaskService.getById(taskId);
+    if (!task) {
+      await ctx.reply(`❌ Không tìm thấy công việc với ID #${taskId}.`);
+      return;
+    }
+
+    const success = TaskService.deleteTask(taskId);
+    if (success) {
+      await ctx.reply(`🗑️ Đã xóa hoàn toàn công việc **#${taskId}** ("${task.title}") khỏi hệ thống!`, {
+        parse_mode: 'Markdown',
+      });
+    } else {
+      await ctx.reply(`❌ Xóa công việc thất bại.`);
+    }
+  }
+
+  /**
    * Xử lý khi bấm nút nhận việc, hoàn thành, hủy
    */
   public static async handleCallback(ctx: Context) {
