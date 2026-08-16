@@ -1,4 +1,5 @@
 import { Database } from '../../database/db';
+import { UserService } from '../users/service';
 
 export interface Meeting {
   id: number;
@@ -45,6 +46,11 @@ export class MeetingService {
     createdBy: number;
   }): Meeting {
     const db = Database.getDb();
+
+    if (data.createdBy && !UserService.getById(data.createdBy)) {
+      UserService.upsertUser(data.createdBy, undefined, `User ${data.createdBy}`);
+    }
+
     const stmt = db.prepare(`
       INSERT INTO meetings (
         title, description, meeting_time, location, target_type, target_value, group_chat_id, created_by
@@ -84,6 +90,11 @@ export class MeetingService {
 
   public static updateMinutes(meetingId: number, minutes: string, userId: number): Meeting | null {
     const db = Database.getDb();
+
+    if (userId && !UserService.getById(userId)) {
+      UserService.upsertUser(userId, undefined, `User ${userId}`);
+    }
+
     const stmt = db.prepare(`
       UPDATE meetings
       SET minutes = ?,
@@ -245,6 +256,11 @@ export class MeetingService {
 
   public static setParticipantStatus(meetingId: number, userId: number, status: 'CONFIRMED' | 'DECLINED') {
     const db = Database.getDb();
+
+    if (userId && !UserService.getById(userId)) {
+      UserService.upsertUser(userId, undefined, `User ${userId}`);
+    }
+
     const stmt = db.prepare(`
       INSERT INTO meeting_participants (meeting_id, user_id, status, updated_at)
       VALUES (?, ?, ?, datetime('now', 'localtime'))

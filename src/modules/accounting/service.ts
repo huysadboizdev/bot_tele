@@ -90,6 +90,13 @@ export class AccountingService {
   }): { transaction: FinancialTransaction; splits: TransactionSplit[] } {
     const db = Database.getDb();
 
+    if (data.createdBy && !UserService.getById(data.createdBy)) {
+      UserService.upsertUser(data.createdBy, undefined, `User ${data.createdBy}`);
+    }
+    if (data.payerId && !UserService.getById(data.payerId)) {
+      UserService.upsertUser(data.payerId, undefined, `User ${data.payerId}`);
+    }
+
     // 1. Xác định danh sách thành viên tham gia chia tiền
     let participatingUsers: { userId?: number; username: string; fullName: string }[] = [];
 
@@ -186,6 +193,14 @@ export class AccountingService {
     createdBy: number;
   }): FinancialTransaction {
     const db = Database.getDb();
+
+    if (data.createdBy && !UserService.getById(data.createdBy)) {
+      UserService.upsertUser(data.createdBy, undefined, `User ${data.createdBy}`);
+    }
+    if (data.payerId && !UserService.getById(data.payerId)) {
+      UserService.upsertUser(data.payerId, undefined, `User ${data.payerId}`);
+    }
+
     const stmt = db.prepare(`
       INSERT INTO financial_transactions (
         type, title, amount, payer_id, payer_name, payment_method,
@@ -235,6 +250,11 @@ export class AccountingService {
     confirmedBy?: number
   ): boolean {
     const db = Database.getDb();
+
+    if (confirmedBy && !UserService.getById(confirmedBy)) {
+      UserService.upsertUser(confirmedBy, undefined, `User ${confirmedBy}`);
+    }
+
     const cleanUsername = username.replace(/^@/, '').toLowerCase().trim();
     try {
       const stmt = db.prepare(`

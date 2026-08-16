@@ -355,6 +355,8 @@ export class TaskHandlers {
     const userId = ctx.from?.id;
     if (!callbackData || !userId) return;
 
+    UserService.upsertUser(userId, ctx.from?.username, ctx.from?.first_name);
+
     const parts = callbackData.split(':');
     const action = parts[0];
     const subAction = parts[1];

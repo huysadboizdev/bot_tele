@@ -4,6 +4,7 @@ import { AdminHandlers } from './modules/admin/handlers';
 import { TaskHandlers } from './modules/tasks/handlers';
 import { MeetingHandlers } from './modules/meetings/handlers';
 import { AccountingHandlers } from './modules/accounting/handlers';
+import { UserService } from './modules/users/service';
 
 export function createBot(): Bot {
   validateConfig();
@@ -14,8 +15,16 @@ export function createBot(): Bot {
 
   const bot = new Bot(CONFIG.BOT_TOKEN);
 
-  // 1. Middleware ghi log & cập nhật thông tin user
+  // 1. Middleware ghi log & tự động đăng ký/cập nhật thông tin user toàn cục
   bot.use(async (ctx, next) => {
+    if (ctx.from?.id) {
+      try {
+        UserService.upsertUser(ctx.from.id, ctx.from.username, ctx.from.first_name);
+      } catch (err) {
+        console.error('Lỗi khi upsert user trong middleware:', err);
+      }
+    }
+
     try {
       await next();
     } catch (err) {

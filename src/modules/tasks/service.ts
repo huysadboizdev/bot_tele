@@ -1,4 +1,5 @@
 import { Database } from '../../database/db';
+import { UserService } from '../users/service';
 
 export interface Task {
   id: number;
@@ -44,6 +45,15 @@ export interface CreateTaskDTO {
 export class TaskService {
   public static create(dto: CreateTaskDTO): Task {
     const db = Database.getDb();
+
+    // Đảm bảo assignedBy và assignedTo (nếu có) tồn tại trong bảng users
+    if (dto.assignedBy && !UserService.getById(dto.assignedBy)) {
+      UserService.upsertUser(dto.assignedBy, undefined, `User ${dto.assignedBy}`);
+    }
+    if (dto.assignedTo && !UserService.getById(dto.assignedTo)) {
+      UserService.upsertUser(dto.assignedTo, undefined, `User ${dto.assignedTo}`);
+    }
+
     const stmt = db.prepare(`
       INSERT INTO tasks (
         title, description, assigned_by, assigned_to, department_id,
@@ -163,6 +173,11 @@ export class TaskService {
     const db = Database.getDb();
     const task = TaskService.getById(taskId);
     if (!task) return null;
+
+    // Đảm bảo userId tồn tại trong bảng users để tránh lỗi FOREIGN KEY constraint
+    if (userId && !UserService.getById(userId)) {
+      UserService.upsertUser(userId, undefined, `User ${userId}`);
+    }
 
     let completedAt: string | null = null;
     if (newStatus === 'COMPLETED') {
