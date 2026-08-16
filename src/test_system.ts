@@ -4,6 +4,7 @@ import { DepartmentService } from './modules/departments/service';
 import { TaskService } from './modules/tasks/service';
 import { TaskParser } from './modules/parser';
 import { MeetingService } from './modules/meetings/service';
+import { AccountingService } from './modules/accounting/service';
 import { formatTaskMessage, getTaskKeyboard } from './modules/tasks/keyboards';
 
 async function runTests() {
@@ -171,7 +172,59 @@ async function runTests() {
     throw new Error('Tra cứu cuộc họp kèm biên bản theo ngày thất bại!');
   }
 
-  console.log('\n🎉 TẤT CẢ 12/12 BÀI KIỂM THỬ ĐÃ PASS 100% THÀNH CÔNG!');
+  // 13. Kiểm tra Phân Hệ Kế Toán: Chi tiêu, Chia tiền đều & Quản lý Thu/Công nợ
+  console.log('\n1️⃣3️⃣ Kiểm tra Phân Hệ Kế Toán (Thu, Chi & Tự Động Chia Đều Tiền):');
+  
+  // Test parse tiền
+  const m1 = AccountingService.parseMoney('500k');
+  const m2 = AccountingService.parseMoney('1.5tr');
+  const m3 = AccountingService.parseMoney('1tr5');
+  if (m1 !== 500000 || m2 !== 1500000 || m3 !== 1500000) {
+    throw new Error('Bộ chuyển đổi tiền tệ parseMoney bị lỗi!');
+  }
+  console.log('   ✅ Parse tiền tệ thông minh (500k, 1.5tr, 1tr5): CHÍNH XÁC');
+
+  // Test tạo khoản chi và chia đều
+  const expenseRes = AccountingService.createExpense({
+    title: 'Mua tài khoản Claude Pro Team',
+    amount: 500000,
+    payerId: admin.telegram_id,
+    payerName: '@sep_tong',
+    paymentMethod: 'BANK',
+    splitType: 'CUSTOM',
+    targetUsernames: ['nam_marketing', 'hoa_marketing'],
+    createdBy: admin.telegram_id,
+  });
+  console.log(`   ✅ Tạo khoản chi #${expenseRes.transaction.id}: "${expenseRes.transaction.title}" - Tổng: ${expenseRes.transaction.amount} VNĐ`);
+  console.log(`   ✅ Tự động chia đều cho ${expenseRes.transaction.total_members} người: Mỗi người ${expenseRes.transaction.amount_per_person} VNĐ`);
+  if (expenseRes.transaction.amount_per_person !== 250000 || expenseRes.splits.length !== 2) {
+    throw new Error('Thuật toán chia đều tiền bị lỗi!');
+  }
+
+  // Test nộp tiền và cấn trừ nợ
+  AccountingService.markSplitPaid(expenseRes.transaction.id, 'nam_marketing', true, admin.telegram_id);
+  const myDebts = AccountingService.getUnpaidDebts('hoa_marketing');
+  console.log(`   ✅ Sau khi @nam_marketing đóng: @hoa_marketing còn nợ ${myDebts.length} khoản (${myDebts[0]?.amount_owed} VNĐ)`);
+  if (myDebts.length !== 1 || myDebts[0]?.amount_owed !== 250000) {
+    throw new Error('Quản lý trạng thái công nợ bị lỗi!');
+  }
+
+  // Test tạo khoản thu & Báo cáo quỹ
+  const incomeTx = AccountingService.createIncome({
+    title: 'Thu tiền dự án Web App',
+    amount: 15000000,
+    paymentMethod: 'BANK',
+    createdBy: admin.telegram_id,
+  });
+  console.log(`   ✅ Tạo khoản thu #${incomeTx.id}: +${incomeTx.amount} VNĐ`);
+
+  const fundSummary = AccountingService.getFundSummary();
+  console.log('   ✅ Báo cáo Quỹ:', fundSummary);
+  if (fundSummary.totalIncome < 15000000 || fundSummary.totalExpense < 500000) {
+    throw new Error('Báo cáo quỹ kế toán bị lỗi!');
+  }
+
+  console.log('\n🎉 TẤT CẢ 13/13 BÀI KIỂM THỬ ĐÃ PASS 100% THÀNH CÔNG!');
   Database.close();
 }
 

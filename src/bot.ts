@@ -3,6 +3,7 @@ import { CONFIG, validateConfig } from './config/env';
 import { AdminHandlers } from './modules/admin/handlers';
 import { TaskHandlers } from './modules/tasks/handlers';
 import { MeetingHandlers } from './modules/meetings/handlers';
+import { AccountingHandlers } from './modules/accounting/handlers';
 
 export function createBot(): Bot {
   validateConfig();
@@ -68,13 +69,23 @@ export function createBot(): Bot {
   bot.command(['meeting_notes', 'minutes', 'bien_ban'], MeetingHandlers.handleMeetingNotes);
   bot.command(['del_meeting', 'cancel_meeting'], MeetingHandlers.handleDelMeeting);
 
-  // 6. Xử lý Callback từ các nút bấm Inline (Admin & Task & Meeting & Overdue Extension)
+  // 6. Các lệnh Kế toán: Thu / Chi / Chia Tiền / Công Nợ / Sổ Quỹ
+  bot.command('chi', AccountingHandlers.handleExpense);
+  bot.command('thu', AccountingHandlers.handleIncome);
+  bot.command(['cong_no', 'debts'], AccountingHandlers.handleDebts);
+  bot.command('my_debts', AccountingHandlers.handleMyDebts);
+  bot.command(['so_quy', 'thu_chi', 'ledger'], AccountingHandlers.handleLedger);
+  bot.command(['quy', 'funds'], AccountingHandlers.handleFundReport);
+
+  // 7. Xử lý Callback từ các nút bấm Inline (Admin & Task & Meeting & Accounting)
   bot.on('callback_query:data', async (ctx) => {
     const data = ctx.callbackQuery?.data;
     if (data?.startsWith('meeting:')) {
       await MeetingHandlers.handleCallback(ctx);
     } else if (data?.startsWith('admin:')) {
       await AdminHandlers.handleCallback(ctx);
+    } else if (data?.startsWith('acc:')) {
+      await AccountingHandlers.handleCallback(ctx);
     } else {
       await TaskHandlers.handleCallback(ctx);
     }

@@ -106,4 +106,41 @@ CREATE TABLE IF NOT EXISTS meeting_participants (
   FOREIGN KEY (meeting_id) REFERENCES meetings(id) ON DELETE CASCADE,
   FOREIGN KEY (user_id) REFERENCES users(telegram_id)
 );
+
+-- Bảng Giao Dịch Thu / Chi & Mua Sắm Tài Nguyên
+CREATE TABLE IF NOT EXISTS financial_transactions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  type TEXT NOT NULL, -- 'CHI' (Khoản chi) hoặc 'THU' (Khoản thu)
+  title TEXT NOT NULL, -- Tên tài nguyên mua sắm / nội dung thu chi
+  amount REAL NOT NULL, -- Tổng số tiền
+  payer_id INTEGER, -- Người thanh toán / người ứng tiền trước
+  payer_name TEXT, -- Tên hiển thị người thanh toán
+  payment_method TEXT NOT NULL DEFAULT 'BANK', -- 'BANK' (Chuyển khoản) hoặc 'CASH' (Tiền mặt)
+  split_type TEXT DEFAULT 'CUSTOM', -- 'ALL', 'DEPARTMENT', 'CUSTOM', 'NONE'
+  split_target TEXT, -- Mã phòng hoặc danh sách @username
+  total_members INTEGER DEFAULT 1, -- Số người chia
+  amount_per_person REAL DEFAULT 0, -- Số tiền mỗi người sau khi chia đều
+  group_chat_id TEXT,
+  created_by INTEGER NOT NULL,
+  created_at TEXT DEFAULT (datetime('now', 'localtime')),
+  FOREIGN KEY (created_by) REFERENCES users(telegram_id),
+  FOREIGN KEY (payer_id) REFERENCES users(telegram_id)
+);
+
+-- Bảng Chi Tiết Chia Tiền & Công Nợ Từng Người
+CREATE TABLE IF NOT EXISTS transaction_splits (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  transaction_id INTEGER NOT NULL,
+  user_id INTEGER,
+  username TEXT NOT NULL,
+  full_name TEXT,
+  amount_owed REAL NOT NULL,
+  is_paid INTEGER DEFAULT 0, -- 0: Chưa đóng, 1: Đã đóng
+  paid_at TEXT,
+  confirmed_by INTEGER,
+  confirmed_at TEXT,
+  FOREIGN KEY (transaction_id) REFERENCES financial_transactions(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(telegram_id),
+  FOREIGN KEY (confirmed_by) REFERENCES users(telegram_id)
+);
 `;
