@@ -155,7 +155,23 @@ async function runTests() {
   console.log(`   ✅ Kiểm tra phân quyền Employee (@hoa_marketing): ${!isEmployeeAdmin ? 'BẢO MẬT TỐT (Không phải Admin)' : 'LỖI PHÂN QUYỀN'}`);
   if (isEmployeeAdmin) throw new Error('Employee không được phép có quyền Admin!');
 
-  console.log('\n🎉 TẤT CẢ 11/11 BÀI KIỂM THỬ ĐÃ PASS 100% THÀNH CÔNG!');
+  // 12. Kiểm tra Nhập Biên Bản & Tra Cứu Cuộc Họp Theo Ngày
+  console.log('\n1️⃣2️⃣ Kiểm tra Nhập Biên Bản Cuộc Họp & Tra Cứu Theo Ngày:');
+  const minutesText = '1. Duyệt ngân sách Marketing 100tr.\n2. Team Dev triển khai tính năng thanh toán.\n3. Hạn chót hoàn tất: 2026-08-30.';
+  const updatedMeeting = MeetingService.updateMinutes(meeting.id, minutesText, employee2.telegram_id);
+  console.log(`   ✅ Thư ký (@hoa_marketing) nộp biên bản cuộc họp #${meeting.id}: Status = THÀNH CÔNG, MinutesAt = ${updatedMeeting?.minutes_at}`);
+  if (!updatedMeeting?.minutes || updatedMeeting.recorder_name !== employee2.full_name) {
+    throw new Error('Lưu biên bản cuộc họp thất bại!');
+  }
+
+  const meetingsOnDate = MeetingService.getByDate('2026-08-25');
+  console.log(`   ✅ Tra cứu cuộc họp theo ngày 2026-08-25: Tìm thấy ${meetingsOnDate.length} cuộc họp`);
+  const foundMeeting = meetingsOnDate.find(m => m.id === meeting.id);
+  if (!foundMeeting || !foundMeeting.minutes) {
+    throw new Error('Tra cứu cuộc họp kèm biên bản theo ngày thất bại!');
+  }
+
+  console.log('\n🎉 TẤT CẢ 12/12 BÀI KIỂM THỬ ĐÃ PASS 100% THÀNH CÔNG!');
   Database.close();
 }
 

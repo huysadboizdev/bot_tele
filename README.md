@@ -44,13 +44,22 @@ Telegram Bot quản lý công việc chuyên nghiệp cho doanh nghiệp: hỗ t
 
 ---
 
-### 📅 4. Lên Lịch & Quản Lý Cuộc Họp (Meetings):
+### 📅 4. Lên Lịch, Biên Bản & Quản Lý Cuộc Họp (Meetings):
 | Hành động | Lệnh | Ví dụ | Mô tả |
 | :--- | :--- | :--- | :--- |
-| **Lên lịch họp** | `/meeting` | `/meeting Họp giao ban lúc: 09:00 tại: Phòng Tầng 2 [cho: all]` | Lên lịch họp & gửi thông báo kèm nút điểm danh |
-| **Họp phòng ban** | `/meeting` | `/meeting Họp chiến dịch lúc: 14h30 tại: Google Meet cho: marketing` | Lên lịch họp & tag toàn bộ phòng ban |
-| **Xem lịch họp** | `/meetings` | `/meetings` | Xem danh sách các cuộc họp sắp diễn ra |
+| **Lên lịch họp** | `/meeting` | `/meeting Họp giao ban lúc: 09:00 tại: Phòng Tầng 2 [cho: all]` | Lên lịch họp, tag nhân sự & kèm nút điểm danh, ghi biên bản |
+| **Xem lịch & Tra cứu theo ngày** | `/meetings` | `/meetings 2026-08-16` *(hoặc `/meetings hom_nay`)* | Xem danh sách & xuất nội dung các cuộc họp theo ngày |
+| **Xem / Nộp biên bản** | `/minutes` | `/minutes 1` *(hoặc `/minutes 1 Nội dung biên bản...`)* | Thư ký nộp hoặc Sếp xem lại toàn văn kết luận cuộc họp |
 | **Hủy cuộc họp** | `/del_meeting` | `/del_meeting 1` | Hủy / Xóa cuộc họp khỏi hệ thống |
+
+---
+
+### 👑 5. Bảng Điều Khiển Quản Trị & Phát Thông Báo (Admin Controls):
+| Hành động | Lệnh | Ví dụ | Mô tả |
+| :--- | :--- | :--- | :--- |
+| **Bảng điều khiển 1 chạm** | `/admin` | `/admin` hoặc `/dashboard` | Mở menu nút bấm quản trị toàn diện công ty |
+| **Phát thông báo toàn cty** | `/broadcast` | `/broadcast Ngày mai 15h họp toàn công ty` | Gửi thông báo trang trọng từ BGĐ đến toàn thể nhân sự |
+| **Danh sách Quản trị viên** | `/admins` | `/admins` | Xem danh sách Super Admin, Admin và Trưởng phòng |
 
 ---
 

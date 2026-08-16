@@ -87,9 +87,13 @@ CREATE TABLE IF NOT EXISTS meetings (
   reminded_24h INTEGER DEFAULT 0,
   reminded_1h INTEGER DEFAULT 0,
   reminded_15m INTEGER DEFAULT 0,
+  minutes TEXT, -- Toàn văn nội dung / biên bản cuộc họp
+  minutes_by INTEGER, -- ID người nộp/ghi chép biên bản
+  minutes_at TEXT, -- Thời điểm nộp/cập nhật biên bản
   status TEXT DEFAULT 'SCHEDULED', -- 'SCHEDULED', 'COMPLETED', 'CANCELLED'
   created_at TEXT DEFAULT (datetime('now', 'localtime')),
-  FOREIGN KEY (created_by) REFERENCES users(telegram_id)
+  FOREIGN KEY (created_by) REFERENCES users(telegram_id),
+  FOREIGN KEY (minutes_by) REFERENCES users(telegram_id)
 );
 
 -- Bảng người tham gia và điểm danh cuộc họp

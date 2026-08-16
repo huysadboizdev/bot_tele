@@ -41,6 +41,18 @@ export class Database {
     try {
       Database.instance.exec('ALTER TABLE pending_assignments ADD COLUMN title TEXT;');
     } catch (_) {}
+
+    try {
+      Database.instance.exec('ALTER TABLE meetings ADD COLUMN minutes TEXT;');
+    } catch (_) {}
+
+    try {
+      Database.instance.exec('ALTER TABLE meetings ADD COLUMN minutes_by INTEGER;');
+    } catch (_) {}
+
+    try {
+      Database.instance.exec('ALTER TABLE meetings ADD COLUMN minutes_at TEXT;');
+    } catch (_) {}
   }
 
   public static close() {

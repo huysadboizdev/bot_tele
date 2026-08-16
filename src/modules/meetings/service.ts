@@ -13,10 +13,15 @@ export interface Meeting {
   reminded_24h: number;
   reminded_1h: number;
   reminded_15m: number;
+  minutes?: string | null;
+  minutes_by?: number | null;
+  minutes_at?: string | null;
   status: 'SCHEDULED' | 'COMPLETED' | 'CANCELLED';
   created_at: string;
   creator_name?: string;
   creator_username?: string;
+  recorder_name?: string;
+  recorder_username?: string;
 }
 
 export interface MeetingParticipant {
@@ -63,23 +68,102 @@ export class MeetingService {
   public static getById(id: number): Meeting | null {
     const db = Database.getDb();
     const query = db.prepare(`
-      SELECT m.*, u.full_name as creator_name, u.username as creator_username
+      SELECT 
+        m.*, 
+        u.full_name as creator_name, 
+        u.username as creator_username,
+        u_rec.full_name as recorder_name,
+        u_rec.username as recorder_username
       FROM meetings m
       LEFT JOIN users u ON m.created_by = u.telegram_id
+      LEFT JOIN users u_rec ON m.minutes_by = u_rec.telegram_id
       WHERE m.id = ?
     `);
     return (query.get(id) as unknown as Meeting) || null;
   }
 
+  public static updateMinutes(meetingId: number, minutes: string, userId: number): Meeting | null {
+    const db = Database.getDb();
+    const stmt = db.prepare(`
+      UPDATE meetings
+      SET minutes = ?,
+          minutes_by = ?,
+          minutes_at = datetime('now', 'localtime')
+      WHERE id = ?
+    `);
+    stmt.run(minutes.trim(), userId, meetingId);
+    return MeetingService.getById(meetingId);
+  }
+
   public static getUpcoming(limit: number = 10): Meeting[] {
     const db = Database.getDb();
     const query = db.prepare(`
-      SELECT m.*, u.full_name as creator_name, u.username as creator_username
+      SELECT 
+        m.*, 
+        u.full_name as creator_name, 
+        u.username as creator_username,
+        u_rec.full_name as recorder_name,
+        u_rec.username as recorder_username
       FROM meetings m
       LEFT JOIN users u ON m.created_by = u.telegram_id
+      LEFT JOIN users u_rec ON m.minutes_by = u_rec.telegram_id
       WHERE m.status = 'SCHEDULED'
         AND m.meeting_time >= datetime('now', 'localtime')
       ORDER BY m.meeting_time ASC
+      LIMIT ?
+    `);
+    return query.all(limit) as unknown as Meeting[];
+  }
+
+  public static getByDate(dateStr: string): Meeting[] {
+    const db = Database.getDb();
+    const query = db.prepare(`
+      SELECT 
+        m.*, 
+        u.full_name as creator_name, 
+        u.username as creator_username,
+        u_rec.full_name as recorder_name,
+        u_rec.username as recorder_username
+      FROM meetings m
+      LEFT JOIN users u ON m.created_by = u.telegram_id
+      LEFT JOIN users u_rec ON m.minutes_by = u_rec.telegram_id
+      WHERE DATE(m.meeting_time) = ?
+      ORDER BY m.meeting_time ASC
+    `);
+    return query.all(dateStr) as unknown as Meeting[];
+  }
+
+  public static getByDateRange(startDate: string, endDate: string): Meeting[] {
+    const db = Database.getDb();
+    const query = db.prepare(`
+      SELECT 
+        m.*, 
+        u.full_name as creator_name, 
+        u.username as creator_username,
+        u_rec.full_name as recorder_name,
+        u_rec.username as recorder_username
+      FROM meetings m
+      LEFT JOIN users u ON m.created_by = u.telegram_id
+      LEFT JOIN users u_rec ON m.minutes_by = u_rec.telegram_id
+      WHERE DATE(m.meeting_time) >= ? AND DATE(m.meeting_time) <= ?
+      ORDER BY m.meeting_time DESC
+    `);
+    return query.all(startDate, endDate) as unknown as Meeting[];
+  }
+
+  public static getAll(limit: number = 30): Meeting[] {
+    const db = Database.getDb();
+    const query = db.prepare(`
+      SELECT 
+        m.*, 
+        u.full_name as creator_name, 
+        u.username as creator_username,
+        u_rec.full_name as recorder_name,
+        u_rec.username as recorder_username
+      FROM meetings m
+      LEFT JOIN users u ON m.created_by = u.telegram_id
+      LEFT JOIN users u_rec ON m.minutes_by = u_rec.telegram_id
+      ORDER BY m.meeting_time DESC
       LIMIT ?
     `);
     return query.all(limit) as unknown as Meeting[];
@@ -92,7 +176,7 @@ export class MeetingService {
     const db = Database.getDb();
     const results: { meeting: Meeting; type: '24h' | '1h' | '15m' }[] = [];
 
-    // Nhắc trước 24 giờ (trong khoảng 23h - 24h trước khi họp)
+    // Nhắc trước 24 giờ
     const q24h = db.prepare(`
       SELECT m.*, u.full_name as creator_name, u.username as creator_username
       FROM meetings m
@@ -107,7 +191,7 @@ export class MeetingService {
       results.push({ meeting: m, type: '24h' });
     }
 
-    // Nhắc trước 1 giờ (trong khoảng 15p - 60p trước khi họp)
+    // Nhắc trước 1 giờ
     const q1h = db.prepare(`
       SELECT m.*, u.full_name as creator_name, u.username as creator_username
       FROM meetings m
@@ -122,7 +206,7 @@ export class MeetingService {
       results.push({ meeting: m, type: '1h' });
     }
 
-    // Nhắc khẩn cấp trước 15 phút (trong khoảng 0p - 15p trước khi họp)
+    // Nhắc khẩn cấp trước 15 phút
     const q15m = db.prepare(`
       SELECT m.*, u.full_name as creator_name, u.username as creator_username
       FROM meetings m

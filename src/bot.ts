@@ -22,12 +22,15 @@ export function createBot(): Bot {
     }
   });
 
-  // 2. Middleware chặn tin nhắn phản hồi khi đang trong trạng thái gia hạn task
+  // 2. Middleware chặn tin nhắn phản hồi khi đang trong trạng thái gia hạn task hoặc nộp biên bản họp
   bot.on('message:text', async (ctx, next) => {
-    const handled = await TaskHandlers.handleTextMessage(ctx);
-    if (!handled) {
-      await next();
-    }
+    const taskHandled = await TaskHandlers.handleTextMessage(ctx);
+    if (taskHandled) return;
+
+    const meetingHandled = await MeetingHandlers.handleTextMessage(ctx);
+    if (meetingHandled) return;
+
+    await next();
   });
 
   // 3. Các lệnh hệ thống & Quản trị Phòng ban / Nhân sự
@@ -62,6 +65,7 @@ export function createBot(): Bot {
   // 5. Các lệnh Lên lịch & Quản lý Cuộc họp (Meetings)
   bot.command('meeting', MeetingHandlers.handleScheduleMeeting);
   bot.command('meetings', MeetingHandlers.handleGetMeetings);
+  bot.command(['meeting_notes', 'minutes', 'bien_ban'], MeetingHandlers.handleMeetingNotes);
   bot.command(['del_meeting', 'cancel_meeting'], MeetingHandlers.handleDelMeeting);
 
   // 6. Xử lý Callback từ các nút bấm Inline (Admin & Task & Meeting & Overdue Extension)
