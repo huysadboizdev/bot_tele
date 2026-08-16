@@ -47,11 +47,19 @@ CREATE TABLE IF NOT EXISTS task_logs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   task_id INTEGER NOT NULL,
   user_id INTEGER NOT NULL,
-  action TEXT NOT NULL, -- 'CREATED', 'ACCEPTED', 'PROGRESS', 'COMPLETED', 'CANCELLED'
+  action TEXT NOT NULL,
   note TEXT,
   created_at TEXT DEFAULT (datetime('now', 'localtime')),
   FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
   FOREIGN KEY (user_id) REFERENCES users(telegram_id)
+);
+
+-- Bảng lưu phân quyền / phòng ban chờ kích hoạt (khi user chưa bấm /start)
+CREATE TABLE IF NOT EXISTS pending_assignments (
+  username TEXT PRIMARY KEY,
+  role TEXT,
+  department_id TEXT,
+  created_at TEXT DEFAULT (datetime('now', 'localtime'))
 );
 `;
 

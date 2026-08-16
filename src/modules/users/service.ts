@@ -11,6 +11,13 @@ export interface User {
   updated_at: string;
 }
 
+export interface PendingAssignment {
+  username: string;
+  role: string | null;
+  department_id: string | null;
+  created_at: string;
+}
+
 export class UserService {
   public static upsertUser(
     telegramId: number,
@@ -20,31 +27,56 @@ export class UserService {
     const db = Database.getDb();
     const cleanUsername = username ? username.replace(/^@/, '').toLowerCase().trim() : null;
     const isSuperAdmin = CONFIG.ADMIN_IDS.includes(telegramId);
-    const defaultRole = isSuperAdmin ? 'ADMIN' : 'EMPLOYEE';
+    let defaultRole: 'ADMIN' | 'MANAGER' | 'EMPLOYEE' = isSuperAdmin ? 'ADMIN' : 'EMPLOYEE';
+    let defaultDept: string | null = null;
+
+    // Kiểm tra xem có phân quyền hoặc phòng ban chờ sẵn cho username này không
+    if (cleanUsername) {
+      const pendingQuery = db.prepare('SELECT * FROM pending_assignments WHERE username = ?');
+      const pending = pendingQuery.get(cleanUsername) as unknown as PendingAssignment | undefined;
+
+      if (pending) {
+        if (pending.role && !isSuperAdmin) {
+          defaultRole = pending.role as 'ADMIN' | 'MANAGER' | 'EMPLOYEE';
+        }
+        if (pending.department_id) {
+          defaultDept = pending.department_id;
+        }
+      }
+    }
 
     const existing = UserService.getById(telegramId);
 
     if (existing) {
       const stmt = db.prepare(`
         UPDATE users 
-        SET username = ?, full_name = ?, updated_at = datetime('now', 'localtime')
+        SET username = ?, 
+            full_name = ?, 
+            department_id = COALESCE(?, department_id),
+            role = CASE WHEN ? = 'ADMIN' THEN 'ADMIN' ELSE role END,
+            updated_at = datetime('now', 'localtime')
         WHERE telegram_id = ?
       `);
-      stmt.run(cleanUsername, fullName, telegramId);
-      
-      // Đảm bảo nếu ID trong ADMIN_IDS thì luôn giữ quyền ADMIN
+      stmt.run(cleanUsername, fullName, defaultDept, defaultRole, telegramId);
+
       if (isSuperAdmin && existing.role !== 'ADMIN') {
         UserService.setRole(telegramId, 'ADMIN');
       }
-      return UserService.getById(telegramId)!;
     } else {
       const stmt = db.prepare(`
-        INSERT INTO users (telegram_id, username, full_name, role)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO users (telegram_id, username, full_name, role, department_id)
+        VALUES (?, ?, ?, ?, ?)
       `);
-      stmt.run(telegramId, cleanUsername, fullName, defaultRole);
-      return UserService.getById(telegramId)!;
+      stmt.run(telegramId, cleanUsername, fullName, defaultRole, defaultDept);
     }
+
+    // Xóa record pending nếu có
+    if (cleanUsername) {
+      const delStmt = db.prepare('DELETE FROM pending_assignments WHERE username = ?');
+      delStmt.run(cleanUsername);
+    }
+
+    return UserService.getById(telegramId)!;
   }
 
   public static getById(telegramId: number): User | null {
@@ -106,6 +138,50 @@ export class UserService {
     } catch (error) {
       console.error('Error setting user role:', error);
       return false;
+    }
+  }
+
+  /**
+   * Phân quyền trực tiếp hoặc lưu tạm chờ kích hoạt khi username chưa tương tác với bot
+   */
+  public static setRoleByUsername(username: string, role: 'ADMIN' | 'MANAGER' | 'EMPLOYEE'): { status: 'UPDATED' | 'PENDING', fullName?: string } {
+    const cleanUsername = username.replace(/^@/, '').toLowerCase().trim();
+    const user = UserService.getByUsername(cleanUsername);
+
+    if (user) {
+      UserService.setRole(user.telegram_id, role);
+      return { status: 'UPDATED', fullName: user.full_name };
+    } else {
+      const db = Database.getDb();
+      const stmt = db.prepare(`
+        INSERT INTO pending_assignments (username, role)
+        VALUES (?, ?)
+        ON CONFLICT(username) DO UPDATE SET role = excluded.role
+      `);
+      stmt.run(cleanUsername, role);
+      return { status: 'PENDING' };
+    }
+  }
+
+  /**
+   * Gán phòng ban trực tiếp hoặc lưu tạm chờ kích hoạt khi username chưa tương tác với bot
+   */
+  public static setDepartmentByUsername(username: string, departmentId: string): { status: 'UPDATED' | 'PENDING', fullName?: string } {
+    const cleanUsername = username.replace(/^@/, '').toLowerCase().trim();
+    const user = UserService.getByUsername(cleanUsername);
+
+    if (user) {
+      UserService.setDepartment(user.telegram_id, departmentId);
+      return { status: 'UPDATED', fullName: user.full_name };
+    } else {
+      const db = Database.getDb();
+      const stmt = db.prepare(`
+        INSERT INTO pending_assignments (username, department_id)
+        VALUES (?, ?)
+        ON CONFLICT(username) DO UPDATE SET department_id = excluded.department_id
+      `);
+      stmt.run(cleanUsername, departmentId);
+      return { status: 'PENDING' };
     }
   }
 
