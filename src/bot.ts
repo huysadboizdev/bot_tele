@@ -86,7 +86,47 @@ export function createBot(): Bot {
   bot.command(['so_quy', 'thu_chi', 'ledger'], AccountingHandlers.handleLedger);
   bot.command(['quy', 'funds'], AccountingHandlers.handleFundReport);
 
-  // 7. Xử lý Callback từ các nút bấm Inline (Admin & Task & Meeting & Accounting)
+  // 7. Xử lý lệnh trong Kênh (Telegram Channel Posts)
+  bot.on('channel_post:text', async (ctx, next) => {
+    const text = ctx.channelPost.text;
+    if (text.startsWith('/')) {
+      const firstWord = text.split(/\s+/)[0].replace(/^\//, '').replace(/@\w+$/, '').toLowerCase();
+      switch (firstWord) {
+        case 'meeting': return MeetingHandlers.handleScheduleMeeting(ctx);
+        case 'meetings': return MeetingHandlers.handleGetMeetings(ctx);
+        case 'minutes':
+        case 'meeting_notes':
+        case 'bien_ban': return MeetingHandlers.handleMeetingNotes(ctx);
+        case 'del_meeting':
+        case 'cancel_meeting': return MeetingHandlers.handleDelMeeting(ctx);
+        case 'chi': return AccountingHandlers.handleExpense(ctx);
+        case 'thu': return AccountingHandlers.handleIncome(ctx);
+        case 'cong_no':
+        case 'debts': return AccountingHandlers.handleDebts(ctx);
+        case 'my_debts': return AccountingHandlers.handleMyDebts(ctx);
+        case 'so_quy':
+        case 'thu_chi':
+        case 'ledger': return AccountingHandlers.handleLedger(ctx);
+        case 'quy':
+        case 'funds': return AccountingHandlers.handleFundReport(ctx);
+        case 'task': return TaskHandlers.assignUserTask(ctx);
+        case 'task_dept': return TaskHandlers.assignDepartmentTask(ctx);
+        case 'stats': return AdminHandlers.handleStats(ctx);
+        case 'broadcast':
+        case 'thong_bao':
+        case 'announcement': return AdminHandlers.handleBroadcast(ctx);
+        case 'departments': return AdminHandlers.handleDepartments(ctx);
+        case 'members': return AdminHandlers.handleMembers(ctx);
+        case 'admins': return AdminHandlers.handleAdminsList(ctx);
+        case 'admin':
+        case 'dashboard': return AdminHandlers.handleDashboard(ctx);
+        case 'help': return AdminHandlers.handleHelp(ctx);
+      }
+    }
+    await next();
+  });
+
+  // 8. Xử lý Callback từ các nút bấm Inline (Admin & Task & Meeting & Accounting)
   bot.on('callback_query:data', async (ctx) => {
     const data = ctx.callbackQuery?.data;
     if (data?.startsWith('meeting:')) {

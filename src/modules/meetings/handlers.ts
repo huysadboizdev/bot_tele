@@ -22,17 +22,27 @@ export class MeetingHandlers {
    * /meeting <tiêu đề> lúc: <thời gian> [tại: ...] [cho: ...]
    */
   public static async handleScheduleMeeting(ctx: Context) {
-    const senderId = ctx.from?.id;
+    const isChannel = ctx.chat?.type === 'channel';
+    const rawMsg = ctx.message || ctx.channelPost;
+    let senderId = ctx.from?.id;
+
+    if (isChannel && !senderId) {
+      senderId = CONFIG.ADMIN_IDS[0] || (ctx.chat?.id ? Math.abs(ctx.chat.id) : 111111);
+    }
+
     if (!senderId) return;
 
-    UserService.upsertUser(senderId, ctx.from.username, ctx.from.first_name);
+    if (ctx.from?.id) {
+      UserService.upsertUser(ctx.from.id, ctx.from.username, ctx.from.first_name);
+    }
 
-    if (!UserService.isAdmin(senderId)) {
+    if (!isChannel && !UserService.isAdmin(senderId)) {
       await ctx.reply('⚠️ Chỉ Quản trị viên (Sếp / Quản lý) mới có quyền tạo và lên lịch cuộc họp.');
       return;
     }
 
-    const text = (ctx.message?.text || '').replace(/^\/meeting(@\w+)?\s*/i, '').trim();
+    const rawText = rawMsg?.text || '';
+    const text = rawText.replace(/^\/meeting(@\w+)?\s*/i, '').trim();
 
     if (!text) {
       await ctx.reply(
@@ -54,11 +64,11 @@ export class MeetingHandlers {
     let targetValue: string | undefined;
     let meetingTimeStr: string | undefined;
 
-    // 1. Trích xuất [cho: ...] hoặc cho: ...
-    const forMatch = remaining.match(/(?:\[cho:\s*([^\]]+)\]|cho:\s*([^\s\[\]]+))/i);
+    // 1. Trích xuất [cho: ...] hoặc cho: ... hoặc [cho ...] hoặc cho ...
+    const forMatch = remaining.match(/(?:\[(?:cho|to|target):?\s*([^\]]+)\]|(?:cho|to|target):?\s*([^\s\[\]]+))/i);
     if (forMatch) {
       const rawTarget = (forMatch[1] || forMatch[2]).trim().toLowerCase();
-      if (rawTarget === 'all' || rawTarget === 'tatca' || rawTarget === 'toanbo') {
+      if (rawTarget === 'all' || rawTarget === 'tatca' || rawTarget === 'toanbo' || rawTarget === 'toàn bộ') {
         targetType = 'ALL';
       } else if (rawTarget.startsWith('@')) {
         targetType = 'USERS';
@@ -76,21 +86,21 @@ export class MeetingHandlers {
       remaining = remaining.replace(forMatch[0], '').trim();
     }
 
-    // 2. Trích xuất tại: / ở: / link: / location:
-    const locMatch = remaining.match(/(?:(?:tại|ở|link|location):\s*([^\[\]]+?)(?=\s*(?:lúc|time|hạn|cho|\[|$)))/i);
+    // 2. Trích xuất tại: / ở: / link: / location: (dấu hai chấm là tùy chọn)
+    const locMatch = remaining.match(/(?:(?:tại|ở|link|location):?\s*([^\[\]]+?)(?=\s*(?:lúc|time|vào lúc|ngày|hạn|cho|\[|$)))/i);
     if (locMatch) {
       location = locMatch[1].trim();
       remaining = remaining.replace(locMatch[0], '').trim();
     }
 
-    // 3. Trích xuất lúc: / time: / vào lúc: / hạn: / ngày:
-    const timeMatch = remaining.match(/(?:(?:lúc|time|vào lúc|ngày|hạn):\s*([^\[\]]+?)(?=\s*(?:tại|ở|link|cho|\[|$)))/i);
+    // 3. Trích xuất lúc: / time: / vào lúc: / hạn: / ngày: (dấu hai chấm là tùy chọn)
+    const timeMatch = remaining.match(/(?:(?:lúc|time|vào lúc|ngày|hạn):?\s*([^\[\]]+?)(?=\s*(?:tại|ở|link|cho|location|\[|$)))/i);
     if (timeMatch) {
       meetingTimeStr = timeMatch[1].trim();
       remaining = remaining.replace(timeMatch[0], '').trim();
     }
 
-    // 4. Nếu chưa tìm thấy với từ khóa lúc:, quét tìm thời gian tự do trong câu
+    // 4. Nếu chưa tìm thấy, quét tìm thời gian tự do trong câu (14h30, 21:00, mai 9h, 2026-08-20...)
     if (!meetingTimeStr) {
       const inlineTimeRegex = /(\b\d{4}-\d{2}-\d{2}(?:\s+\d{1,2}(?:h|:)\d{0,2})?|\b\d{1,2}[\/\-]\d{1,2}(?:[\/\-]\d{4})?(?:\s+\d{1,2}(?:h|:)\d{0,2})?|\b(?:mai|ngày\s+mai|hôm\s+nay)\s+\d{1,2}(?:h|:)\d{0,2}|\b\d{1,2}h\d{0,2}\b|\b\d{1,2}:\d{2}\b)/i;
       const inlineMatch = remaining.match(inlineTimeRegex);
@@ -150,7 +160,8 @@ export class MeetingHandlers {
    * /meetings [ngày / today / hom_nay / YYYY-MM-DD]: Tra cứu danh sách cuộc họp theo ngày
    */
   public static async handleGetMeetings(ctx: Context) {
-    const rawArg = (ctx.message?.text || '').replace(/^\/meetings(@\w+)?\s*/i, '').trim();
+    const rawMsg = ctx.message || ctx.channelPost;
+    const rawArg = (rawMsg?.text || '').replace(/^\/meetings(@\w+)?\s*/i, '').trim();
 
     if (rawArg) {
       let targetDate = rawArg;
@@ -202,12 +213,21 @@ export class MeetingHandlers {
    * /meeting_notes <id> [nội dung biên bản mới]: Xem hoặc nhập biên bản cuộc họp
    */
   public static async handleMeetingNotes(ctx: Context) {
-    const senderId = ctx.from?.id;
+    const isChannel = ctx.chat?.type === 'channel';
+    const rawMsg = ctx.message || ctx.channelPost;
+    let senderId = ctx.from?.id;
+
+    if (isChannel && !senderId) {
+      senderId = CONFIG.ADMIN_IDS[0] || (ctx.chat?.id ? Math.abs(ctx.chat.id) : 111111);
+    }
+
     if (!senderId) return;
 
-    UserService.upsertUser(senderId, ctx.from.username, ctx.from.first_name);
+    if (ctx.from?.id) {
+      UserService.upsertUser(ctx.from.id, ctx.from.username, ctx.from.first_name);
+    }
 
-    const text = (ctx.message?.text || '').replace(/^\/(meeting_notes|minutes|bien_ban)(@\w+)?\s*/i, '').trim();
+    const text = (rawMsg?.text || '').replace(/^\/(meeting_notes|minutes|bien_ban)(@\w+)?\s*/i, '').trim();
     const parts = text.split(/\s+/);
     const meetingId = Number(parts[0]);
 
@@ -263,13 +283,20 @@ export class MeetingHandlers {
    * /del_meeting <id>
    */
   public static async handleDelMeeting(ctx: Context) {
-    const senderId = ctx.from?.id;
-    if (!senderId || !UserService.isAdmin(senderId)) {
+    const isChannel = ctx.chat?.type === 'channel';
+    const rawMsg = ctx.message || ctx.channelPost;
+    let senderId = ctx.from?.id;
+
+    if (isChannel && !senderId) {
+      senderId = CONFIG.ADMIN_IDS[0] || (ctx.chat?.id ? Math.abs(ctx.chat.id) : 111111);
+    }
+
+    if (!senderId || (!isChannel && !UserService.isAdmin(senderId))) {
       await ctx.reply('⚠️ Chỉ Quản trị viên mới có quyền hủy cuộc họp.');
       return;
     }
 
-    const text = (ctx.message?.text || '').replace(/^\/(del_meeting|cancel_meeting)(@\w+)?\s*/i, '').trim();
+    const text = (rawMsg?.text || '').replace(/^\/(del_meeting|cancel_meeting)(@\w+)?\s*/i, '').trim();
     const meetingId = Number(text);
 
     if (!text || isNaN(meetingId)) {
@@ -457,8 +484,9 @@ export class MeetingHandlers {
    * Bắt tin nhắn văn bản khi người dùng đang nhập biên bản họp hoặc nhập ngày lọc
    */
   public static async handleTextMessage(ctx: Context): Promise<boolean> {
-    const userId = ctx.from?.id;
-    const text = ctx.message?.text?.trim();
+    const rawMsg = ctx.message || ctx.channelPost;
+    const userId = ctx.from?.id || (ctx.chat?.type === 'channel' ? Math.abs(ctx.chat.id) : undefined);
+    const text = rawMsg?.text?.trim();
     if (!userId || !text) return false;
 
     // Bỏ qua nếu là câu lệnh bắt đầu bằng /
