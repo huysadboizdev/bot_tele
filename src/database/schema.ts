@@ -101,12 +101,3 @@ CREATE TABLE IF NOT EXISTS meeting_participants (
   FOREIGN KEY (user_id) REFERENCES users(telegram_id)
 );
 `;
-
-export const DEFAULT_DEPARTMENTS = [
-  { id: 'bld', name: 'Ban Giám Đốc', description: 'Ban lãnh đạo và quản lý cấp cao' },
-  { id: 'tech', name: 'Kỹ Thuật / Dev', description: 'Đội ngũ phát triển phần mềm và CNTT' },
-  { id: 'marketing', name: 'Marketing', description: 'Phòng truyền thông và tiếp thị' },
-  { id: 'sales', name: 'Kinh Doanh / Sales', description: 'Phòng kinh doanh và phát triển thị trường' },
-  { id: 'ketoan', name: 'Kế Toán / Tài Chính', description: 'Phòng kế toán và quản lý tài chính' },
-  { id: 'hr', name: 'Hành Chính / HR', description: 'Phòng nhân sự và hành chính tổng hợp' },
-];
