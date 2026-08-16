@@ -31,7 +31,7 @@ export function formatMeetingMessage(meeting: Meeting, customPrefix?: string): s
   if (meeting.target_type === 'DEPARTMENT' && meeting.target_value) {
     targetDisplay = `Phòng ${meeting.target_value.toUpperCase()}`;
   } else if (meeting.target_type === 'USERS' && meeting.target_value) {
-    targetDisplay = meeting.target_value;
+    targetDisplay = meeting.target_value.replace(/_/g, '\\_');
   }
 
   let msg = `${prefix}\n\n`;
@@ -51,10 +51,10 @@ export function formatMeetingMessage(meeting: Meeting, customPrefix?: string): s
 
   msg += `\n📊 **Điểm danh (${participants.confirmed.length} tham gia | ${participants.declined.length} vắng):**\n`;
   if (participants.confirmed.length > 0) {
-    msg += `• Có mặt: ${participants.confirmed.map(p => p.username ? `@${p.username}` : p.full_name).join(', ')}\n`;
+    msg += `• Có mặt: ${participants.confirmed.map(p => p.username ? `@${p.username.replace(/_/g, '\\_')}` : p.full_name).join(', ')}\n`;
   }
   if (participants.declined.length > 0) {
-    msg += `• Báo vắng: ${participants.declined.map(p => p.username ? `@${p.username}` : p.full_name).join(', ')}\n`;
+    msg += `• Báo vắng: ${participants.declined.map(p => p.username ? `@${p.username.replace(/_/g, '\\_')}` : p.full_name).join(', ')}\n`;
   }
 
   return msg;
@@ -62,7 +62,7 @@ export function formatMeetingMessage(meeting: Meeting, customPrefix?: string): s
 
 export function formatMeetingNotesMessage(meeting: Meeting): string {
   const recorderDisplay = meeting.recorder_username 
-    ? `@${meeting.recorder_username} (${meeting.recorder_name})`
+    ? `@${meeting.recorder_username.replace(/_/g, '\\_')} (${meeting.recorder_name})`
     : (meeting.recorder_name || 'Thư ký / Người chủ trì');
 
   let msg = `📑 **NỘI DUNG & BIÊN BẢN CUỘC HỌP #${meeting.id}** 📑\n\n`;

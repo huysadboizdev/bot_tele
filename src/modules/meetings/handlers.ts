@@ -40,8 +40,8 @@ export class MeetingHandlers {
         '`/meeting <Chủ đề> lúc: <Thời gian> [tại: Địa điểm/Link] [cho: all/mã_phòng/@user]`\n\n' +
         '**Ví dụ:**\n' +
         '1. `/meeting Họp giao ban đầu tuần lúc: 2026-08-20 09:00 tại: Phòng Họp Tầng 2 [cho: all]`\n' +
-        '2. `/meeting Họp chiến dịch mới lúc: 14h30 tại: Google Meet: meet.google.com/xyz cho: marketing`\n' +
-        '3. `/meeting Đánh giá tiến độ lúc: 16:00 cho: @Khoiimen`',
+        '2. `/meeting Họp chiến dịch mới lúc: 14h30 tại: Google Meet cho: marketing`\n' +
+        '3. `/meeting Đánh giá tiến độ lúc: 16:00 cho: @nam`',
         { parse_mode: 'Markdown' }
       );
       return;
@@ -76,18 +76,28 @@ export class MeetingHandlers {
       remaining = remaining.replace(forMatch[0], '').trim();
     }
 
-    // 2. Trích xuất tại: / ở: / link:
-    const locMatch = remaining.match(/(?:(?:tại|ở|link|location):\s*([^\[\]]+?)(?=\s*(?:lúc|hạn|cho|\[|$)))/i);
+    // 2. Trích xuất tại: / ở: / link: / location:
+    const locMatch = remaining.match(/(?:(?:tại|ở|link|location):\s*([^\[\]]+?)(?=\s*(?:lúc|time|hạn|cho|\[|$)))/i);
     if (locMatch) {
       location = locMatch[1].trim();
       remaining = remaining.replace(locMatch[0], '').trim();
     }
 
-    // 3. Trích xuất lúc: / time: / vào lúc:
+    // 3. Trích xuất lúc: / time: / vào lúc: / hạn: / ngày:
     const timeMatch = remaining.match(/(?:(?:lúc|time|vào lúc|ngày|hạn):\s*([^\[\]]+?)(?=\s*(?:tại|ở|link|cho|\[|$)))/i);
     if (timeMatch) {
       meetingTimeStr = timeMatch[1].trim();
       remaining = remaining.replace(timeMatch[0], '').trim();
+    }
+
+    // 4. Nếu chưa tìm thấy với từ khóa lúc:, quét tìm thời gian tự do trong câu
+    if (!meetingTimeStr) {
+      const inlineTimeRegex = /(\b\d{4}-\d{2}-\d{2}(?:\s+\d{1,2}(?:h|:)\d{0,2})?|\b\d{1,2}[\/\-]\d{1,2}(?:[\/\-]\d{4})?(?:\s+\d{1,2}(?:h|:)\d{0,2})?|\b(?:mai|ngày\s+mai|hôm\s+nay)\s+\d{1,2}(?:h|:)\d{0,2}|\b\d{1,2}h\d{0,2}\b|\b\d{1,2}:\d{2}\b)/i;
+      const inlineMatch = remaining.match(inlineTimeRegex);
+      if (inlineMatch) {
+        meetingTimeStr = inlineMatch[1].trim();
+        remaining = remaining.replace(inlineMatch[0], '').trim();
+      }
     }
 
     // Tiêu đề là phần còn lại
@@ -104,31 +114,36 @@ export class MeetingHandlers {
     const standardizedTime = TaskParser.standardizeDeadline(meetingTimeStr);
     const chatId = ctx.chat?.id ? String(ctx.chat.id) : undefined;
 
-    const meeting = MeetingService.create({
-      title,
-      meetingTime: standardizedTime,
-      location,
-      targetType,
-      targetValue,
-      groupChatId: chatId,
-      createdBy: senderId,
-    });
+    try {
+      const meeting = MeetingService.create({
+        title,
+        meetingTime: standardizedTime,
+        location,
+        targetType,
+        targetValue,
+        groupChatId: chatId,
+        createdBy: senderId,
+      });
 
-    let tagString = '';
-    if (targetType === 'DEPARTMENT' && targetValue) {
-      const members = UserService.getByDepartment(targetValue);
-      const tags = members.map(m => m.username ? `@${m.username}` : m.full_name).filter(Boolean);
-      if (tags.length > 0) tagString = `\n📢 **Mời các bạn tham gia:** ${tags.join(' ')}\n`;
-    } else if (targetType === 'USERS' && targetValue) {
-      tagString = `\n📢 **Mời:** ${targetValue}\n`;
+      let tagString = '';
+      if (targetType === 'DEPARTMENT' && targetValue) {
+        const members = UserService.getByDepartment(targetValue);
+        const tags = members.map(m => m.username ? `@${m.username.replace(/_/g, '\\_')}` : m.full_name).filter(Boolean);
+        if (tags.length > 0) tagString = `\n📢 **Mời các bạn tham gia:** ${tags.join(' ')}\n`;
+      } else if (targetType === 'USERS' && targetValue) {
+        tagString = `\n📢 **Mời:** ${targetValue.replace(/_/g, '\\_')}\n`;
+      }
+
+      const msg = formatMeetingMessage(meeting) + tagString;
+
+      await ctx.reply(msg, {
+        parse_mode: 'Markdown',
+        reply_markup: getMeetingKeyboard(meeting.id),
+      });
+    } catch (err: any) {
+      console.error('Lỗi khi tạo cuộc họp:', err);
+      await ctx.reply(`❌ Lỗi khi lên lịch cuộc họp: ${err?.message || 'Vui lòng thử lại sau.'}`);
     }
-
-    const msg = formatMeetingMessage(meeting) + tagString;
-
-    await ctx.reply(msg, {
-      parse_mode: 'Markdown',
-      reply_markup: getMeetingKeyboard(meeting.id),
-    });
   }
 
   /**
@@ -189,6 +204,8 @@ export class MeetingHandlers {
   public static async handleMeetingNotes(ctx: Context) {
     const senderId = ctx.from?.id;
     if (!senderId) return;
+
+    UserService.upsertUser(senderId, ctx.from.username, ctx.from.first_name);
 
     const text = (ctx.message?.text || '').replace(/^\/(meeting_notes|minutes|bien_ban)(@\w+)?\s*/i, '').trim();
     const parts = text.split(/\s+/);
@@ -303,8 +320,9 @@ export class MeetingHandlers {
       MeetingService.setParticipantStatus(meetingId, userId, 'CONFIRMED');
       await ctx.answerCallbackQuery({ text: '✅ Bạn đã xác nhận SẼ THAM GIA cuộc họp!' });
 
+      const updatedMeeting = MeetingService.getById(meetingId) || meeting;
       try {
-        await ctx.editMessageText(formatMeetingMessage(meeting), {
+        await ctx.editMessageText(formatMeetingMessage(updatedMeeting), {
           parse_mode: 'Markdown',
           reply_markup: getMeetingKeyboard(meetingId),
         });
@@ -322,8 +340,9 @@ export class MeetingHandlers {
       MeetingService.setParticipantStatus(meetingId, userId, 'DECLINED');
       await ctx.answerCallbackQuery({ text: '❌ Bạn đã báo VẮNG MẶT cuộc họp này.' });
 
+      const updatedMeeting = MeetingService.getById(meetingId) || meeting;
       try {
-        await ctx.editMessageText(formatMeetingMessage(meeting), {
+        await ctx.editMessageText(formatMeetingMessage(updatedMeeting), {
           parse_mode: 'Markdown',
           reply_markup: getMeetingKeyboard(meetingId),
         });
@@ -335,10 +354,10 @@ export class MeetingHandlers {
       const p = MeetingService.getParticipants(meetingId);
       let listMsg = `📋 **DANH SÁCH THAM GIA CUỘC HỌP #${meetingId}**\n\n`;
       listMsg += `✅ **Có mặt (${p.confirmed.length}):**\n`;
-      listMsg += p.confirmed.length > 0 ? p.confirmed.map(u => `• ${u.full_name} (@${u.username || 'n/a'})`).join('\n') : '• Chưa có ai xác nhận\n';
+      listMsg += p.confirmed.length > 0 ? p.confirmed.map(u => `• ${u.full_name} (@${(u.username || 'n/a').replace(/_/g, '\\_')})`).join('\n') : '• Chưa có ai xác nhận\n';
 
       listMsg += `\n❌ **Báo vắng (${p.declined.length}):**\n`;
-      listMsg += p.declined.length > 0 ? p.declined.map(u => `• ${u.full_name} (@${u.username || 'n/a'})`).join('\n') : '• Không có ai báo vắng\n';
+      listMsg += p.declined.length > 0 ? p.declined.map(u => `• ${u.full_name} (@${(u.username || 'n/a').replace(/_/g, '\\_')})`).join('\n') : '• Không có ai báo vắng\n';
 
       await ctx.answerCallbackQuery();
       await ctx.reply(listMsg, { parse_mode: 'Markdown' });
@@ -452,7 +471,7 @@ export class MeetingHandlers {
 
       const updated = MeetingService.updateMinutes(meetingId, text, userId);
       if (updated) {
-        const userName = ctx.from?.username ? `@${ctx.from.username}` : (ctx.from?.first_name || 'Thư ký');
+        const userName = ctx.from?.username ? `@${ctx.from.username.replace(/_/g, '\\_')}` : (ctx.from?.first_name || 'Thư ký');
         let confirmMsg = `✅ **ĐÃ LƯU BIÊN BẢN CUỘC HỌP #${meetingId} THÀNH CÔNG!**\n\n`;
         confirmMsg += `📌 **Chủ đề:** **${updated.title}**\n`;
         confirmMsg += `📅 **Ngày họp:** \`${updated.meeting_time}\`\n`;

@@ -85,36 +85,80 @@ export class TaskParser {
    * Chuẩn hóa deadline thành định dạng YYYY-MM-DD HH:mm:ss
    */
   public static standardizeDeadline(input: string): string {
+    if (!input) return '';
+    const clean = input.trim();
     const now = new Date();
 
-    // Format: YYYY-MM-DD HH:mm
-    if (/^\d{4}-\d{2}-\d{2}(\s+\d{2}:\d{2})?$/.test(input)) {
-      return input.includes(':') ? `${input}:00` : `${input} 18:00:00`;
+    // 1. Format: YYYY-MM-DD HH:mm:ss hoặc YYYY-MM-DD HH:mm hoặc YYYY-MM-DD
+    if (/^\d{4}-\d{2}-\d{2}(\s+\d{2}:\d{2}(:\d{2})?)?$/.test(clean)) {
+      const parts = clean.split(/\s+/);
+      const datePart = parts[0];
+      const timePart = parts[1] || '09:00:00';
+      const timeParts = timePart.split(':');
+      const h = timeParts[0].padStart(2, '0');
+      const m = (timeParts[1] || '00').padStart(2, '0');
+      const s = (timeParts[2] || '00').padStart(2, '0');
+      return `${datePart} ${h}:${m}:${s}`;
     }
 
-    // Format: DD/MM/YYYY HH:mm hoặc DD/MM HH:mm
-    const dateMatch = input.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?(?:\s+(\d{1,2}):(\d{2}))?$/);
-    if (dateMatch) {
-      const day = dateMatch[1].padStart(2, '0');
-      const month = dateMatch[2].padStart(2, '0');
-      const year = dateMatch[3] || now.getFullYear().toString();
-      const hour = dateMatch[4] ? dateMatch[4].padStart(2, '0') : '18';
-      const min = dateMatch[5] || '00';
+    // 2. Format: DD/MM/YYYY hoặc DD-MM-YYYY kèm giờ (14h30 hoặc 14:30 hoặc 14h)
+    const fullDateMatch = clean.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(?:\s+(\d{1,2})(?:h|:)?(\d{2})?)?$/i);
+    if (fullDateMatch) {
+      const day = fullDateMatch[1].padStart(2, '0');
+      const month = fullDateMatch[2].padStart(2, '0');
+      const year = fullDateMatch[3];
+      const hour = (fullDateMatch[4] || '09').padStart(2, '0');
+      const min = (fullDateMatch[5] || '00').padStart(2, '0');
       return `${year}-${month}-${day} ${hour}:${min}:00`;
     }
 
-    // Format: 17h, 17:30 (Tính cho ngày hôm nay)
-    const timeMatch = input.match(/^(\d{1,2})(?:h|:(\d{2}))$/);
+    // 3. Format: DD/MM hoặc DD-MM kèm giờ
+    const shortDateMatch = clean.match(/^(\d{1,2})[\/\-](\d{1,2})(?:\s+(\d{1,2})(?:h|:)?(\d{2})?)?$/i);
+    if (shortDateMatch) {
+      const day = shortDateMatch[1].padStart(2, '0');
+      const month = shortDateMatch[2].padStart(2, '0');
+      const year = now.getFullYear().toString();
+      const hour = (shortDateMatch[3] || '09').padStart(2, '0');
+      const min = (shortDateMatch[4] || '00').padStart(2, '0');
+      return `${year}-${month}-${day} ${hour}:${min}:00`;
+    }
+
+    // 4. Format: Ngày mai / Mai (ví dụ: mai 14h30, ngày mai 9h, mai 14:30)
+    const tomorrowMatch = clean.match(/^(?:ngày\s+)?(?:mai|ngay\s*mai)(?:\s+(\d{1,2})(?:h|:)?(\d{2})?)?$/i);
+    if (tomorrowMatch) {
+      const tm = new Date();
+      tm.setDate(tm.getDate() + 1);
+      const year = tm.getFullYear();
+      const month = String(tm.getMonth() + 1).padStart(2, '0');
+      const day = String(tm.getDate()).padStart(2, '0');
+      const hour = (tomorrowMatch[1] || '09').padStart(2, '0');
+      const min = (tomorrowMatch[2] || '00').padStart(2, '0');
+      return `${year}-${month}-${day} ${hour}:${min}:00`;
+    }
+
+    // 5. Format: Hôm nay / Nay (ví dụ: hôm nay 14h30, nay 9h)
+    const todayMatch = clean.match(/^(?:hôm\s+)?(?:nay|hom\s*nay)(?:\s+(\d{1,2})(?:h|:)?(\d{2})?)?$/i);
+    if (todayMatch) {
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      const hour = (todayMatch[1] || '09').padStart(2, '0');
+      const min = (todayMatch[2] || '00').padStart(2, '0');
+      return `${year}-${month}-${day} ${hour}:${min}:00`;
+    }
+
+    // 6. Format: Chỉ có giờ trong ngày hôm nay: 14h30, 14h, 9h15, 9h, 14:30, 09:00
+    const timeMatch = clean.match(/^(\d{1,2})(?:h(\d{1,2})?|:(\d{2}))$/i);
     if (timeMatch) {
       const year = now.getFullYear();
       const month = String(now.getMonth() + 1).padStart(2, '0');
       const day = String(now.getDate()).padStart(2, '0');
       const hour = timeMatch[1].padStart(2, '0');
-      const min = timeMatch[2] || '00';
+      const min = (timeMatch[2] || timeMatch[3] || '00').padStart(2, '0');
       return `${year}-${month}-${day} ${hour}:${min}:00`;
     }
 
     // Trả về nguyên bản nếu không nhận dạng được
-    return input;
+    return clean;
   }
 }
