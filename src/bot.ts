@@ -122,6 +122,13 @@ export function createBot(): Bot {
         case 'dashboard': return AdminHandlers.handleDashboard(ctx);
         case 'help': return AdminHandlers.handleHelp(ctx);
       }
+    } else {
+      // Nhận diện tin nhắn nhập nội dung biên bản cuộc họp hoặc gia hạn task trong Kênh
+      const meetingHandled = await MeetingHandlers.handleTextMessage(ctx);
+      if (meetingHandled) return;
+
+      const taskHandled = await TaskHandlers.handleTextMessage(ctx);
+      if (taskHandled) return;
     }
     await next();
   });

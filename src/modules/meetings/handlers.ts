@@ -12,11 +12,11 @@ import { TaskParser } from '../parser';
 import { CONFIG } from '../../config/env';
 
 export class MeetingHandlers {
-  // Trạng thái chờ thư ký gửi nội dung biên bản cuộc họp
-  public static userPendingMeetingNotes = new Map<number, number>(); // userId -> meetingId
+  // Trạng thái chờ thư ký gửi nội dung biên bản cuộc họp (key: userId hoặc chatId)
+  public static userPendingMeetingNotes = new Map<string, number>();
 
-  // Trạng thái chờ người dùng gõ ngày cần tra cứu
-  public static userPendingDateFilter = new Set<number>(); // userId
+  // Trạng thái chờ người dùng gõ ngày cần tra cứu (key: userId hoặc chatId)
+  public static userPendingDateFilter = new Set<string>();
 
   /**
    * /meeting <tiêu đề> lúc: <thời gian> [tại: ...] [cho: ...]
@@ -425,7 +425,12 @@ export class MeetingHandlers {
         return;
       }
 
-      MeetingHandlers.userPendingMeetingNotes.set(userId, meetingId);
+      // Lưu trạng thái chờ theo cả userId và chatId để nhận diện được trong cả Group và Kênh
+      MeetingHandlers.userPendingMeetingNotes.set(String(userId), meetingId);
+      if (ctx.chat?.id) {
+        MeetingHandlers.userPendingMeetingNotes.set(String(ctx.chat.id), meetingId);
+      }
+
       await ctx.answerCallbackQuery();
 
       await ctx.reply(
@@ -433,7 +438,7 @@ export class MeetingHandlers {
         `📌 **Chủ đề:** **${meeting.title}**\n` +
         `📅 **Ngày & Giờ họp:** \`${meeting.meeting_time}\`\n\n` +
         `👉 Vui lòng gửi một tin nhắn văn bản chứa toàn bộ **Nội dung / Kết luận cuộc họp** để lưu trữ:\n` +
-        `_(Ví dụ: Các mục đã thảo luận, phân công công việc, quyết định của Ban Giám Đốc...)_`,
+        `_(Ví dụ: Các mục đã thảo luận, phân công công việc, quyết định của Ban Giám Đốc... hoặc gõ /minutes ${meetingId} <nội dung>)_`,
         { parse_mode: 'Markdown' }
       );
     }
@@ -469,7 +474,10 @@ export class MeetingHandlers {
 
     // 7. Nhập ngày tùy ý
     else if (action === 'filter_custom_prompt') {
-      MeetingHandlers.userPendingDateFilter.add(userId);
+      MeetingHandlers.userPendingDateFilter.add(String(userId));
+      if (ctx.chat?.id) {
+        MeetingHandlers.userPendingDateFilter.add(String(ctx.chat.id));
+      }
       await ctx.answerCallbackQuery();
       await ctx.reply(
         `🔍 **TRA CỨU CUỘC HỌP THEO NGÀY TÙY Ý:**\n\n` +
@@ -485,21 +493,34 @@ export class MeetingHandlers {
    */
   public static async handleTextMessage(ctx: Context): Promise<boolean> {
     const rawMsg = ctx.message || ctx.channelPost;
-    const userId = ctx.from?.id || (ctx.chat?.type === 'channel' ? Math.abs(ctx.chat.id) : undefined);
     const text = rawMsg?.text?.trim();
-    if (!userId || !text) return false;
+    if (!text) return false;
 
     // Bỏ qua nếu là câu lệnh bắt đầu bằng /
     if (text.startsWith('/')) return false;
 
-    // 1. Nếu đang chờ thư ký gửi nội dung biên bản cuộc họp
-    if (MeetingHandlers.userPendingMeetingNotes.has(userId)) {
-      const meetingId = MeetingHandlers.userPendingMeetingNotes.get(userId)!;
-      MeetingHandlers.userPendingMeetingNotes.delete(userId);
+    const userIdStr = ctx.from?.id ? String(ctx.from.id) : undefined;
+    const chatIdStr = ctx.chat?.id ? String(ctx.chat.id) : undefined;
 
-      const updated = MeetingService.updateMinutes(meetingId, text, userId);
+    // 1. Nếu đang chờ thư ký gửi nội dung biên bản cuộc họp
+    let meetingId: number | undefined;
+    if (userIdStr && MeetingHandlers.userPendingMeetingNotes.has(userIdStr)) {
+      meetingId = MeetingHandlers.userPendingMeetingNotes.get(userIdStr);
+      MeetingHandlers.userPendingMeetingNotes.delete(userIdStr);
+      if (chatIdStr) MeetingHandlers.userPendingMeetingNotes.delete(chatIdStr);
+    } else if (chatIdStr && MeetingHandlers.userPendingMeetingNotes.has(chatIdStr)) {
+      meetingId = MeetingHandlers.userPendingMeetingNotes.get(chatIdStr);
+      MeetingHandlers.userPendingMeetingNotes.delete(chatIdStr);
+    }
+
+    if (meetingId) {
+      const authorId = ctx.from?.id || (CONFIG.ADMIN_IDS[0] || 111111);
+      const updated = MeetingService.updateMinutes(meetingId, text, authorId);
       if (updated) {
-        const userName = ctx.from?.username ? `@${ctx.from.username.replace(/_/g, '\\_')}` : (ctx.from?.first_name || 'Thư ký');
+        const userName = ctx.from?.username 
+          ? `@${ctx.from.username.replace(/_/g, '\\_')}` 
+          : (ctx.from?.first_name || ctx.chat?.title || 'Thư ký / Ban Giám Đốc');
+
         let confirmMsg = `✅ **ĐÃ LƯU BIÊN BẢN CUỘC HỌP #${meetingId} THÀNH CÔNG!**\n\n`;
         confirmMsg += `📌 **Chủ đề:** **${updated.title}**\n`;
         confirmMsg += `📅 **Ngày họp:** \`${updated.meeting_time}\`\n`;
@@ -521,9 +542,17 @@ export class MeetingHandlers {
     }
 
     // 2. Nếu đang chờ nhập ngày tra cứu
-    if (MeetingHandlers.userPendingDateFilter.has(userId)) {
-      MeetingHandlers.userPendingDateFilter.delete(userId);
+    let hasDateFilter = false;
+    if (userIdStr && MeetingHandlers.userPendingDateFilter.has(userIdStr)) {
+      hasDateFilter = true;
+      MeetingHandlers.userPendingDateFilter.delete(userIdStr);
+      if (chatIdStr) MeetingHandlers.userPendingDateFilter.delete(chatIdStr);
+    } else if (chatIdStr && MeetingHandlers.userPendingDateFilter.has(chatIdStr)) {
+      hasDateFilter = true;
+      MeetingHandlers.userPendingDateFilter.delete(chatIdStr);
+    }
 
+    if (hasDateFilter) {
       let targetDate = text;
       if (/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}$/.test(text)) {
         const parts = text.split(/[\/\-]/);

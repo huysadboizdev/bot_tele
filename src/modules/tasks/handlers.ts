@@ -1,13 +1,14 @@
 import { Context } from 'grammy';
-import { UserService } from '../users/service';
-import { DepartmentService } from '../departments/service';
-import { TaskService } from './service';
-import { TaskParser } from '../parser';
+import { TaskService, Task } from './service';
 import {
   formatTaskMessage,
   getTaskKeyboard,
   getExtensionOptionsKeyboard,
 } from './keyboards';
+import { UserService } from '../users/service';
+import { DepartmentService } from '../departments/service';
+import { TaskParser } from '../parser';
+import { CONFIG } from '../../config/env';
 
 export interface PendingExtensionState {
   taskId: number;
@@ -16,26 +17,35 @@ export interface PendingExtensionState {
 }
 
 export class TaskHandlers {
-  // Lưu trạng thái chờ người dùng nhập lý do gia hạn hoặc hạn chót mới
-  public static pendingExtensions = new Map<number, PendingExtensionState>();
+  // Lưu trạng thái chờ người dùng nhập lý do gia hạn hoặc hạn chót mới (key: string userId hoặc chatId)
+  public static pendingExtensions = new Map<string, PendingExtensionState>();
 
   /**
    * /task @username <nội dung> [hạn: YYYY-MM-DD HH:mm]
    */
   public static async assignUserTask(ctx: Context) {
-    const senderId = ctx.from?.id;
+    const isChannel = ctx.chat?.type === 'channel';
+    const rawMsg = ctx.message || ctx.channelPost;
+    let senderId = ctx.from?.id;
+
+    if (isChannel && !senderId) {
+      senderId = CONFIG.ADMIN_IDS[0] || (ctx.chat?.id ? Math.abs(ctx.chat.id) : 111111);
+    }
+
     if (!senderId) return;
 
-    UserService.upsertUser(senderId, ctx.from.username, ctx.from.first_name);
+    if (ctx.from?.id) {
+      UserService.upsertUser(ctx.from.id, ctx.from.username, ctx.from.first_name);
+    }
 
-    if (!UserService.isAdmin(senderId)) {
+    if (!isChannel && !UserService.isAdmin(senderId)) {
       await ctx.reply('⚠️ Bạn cần có quyền Quản trị viên (Admin/Manager) để giao việc.', {
-        reply_to_message_id: ctx.message?.message_id,
+        reply_to_message_id: rawMsg?.message_id,
       });
       return;
     }
 
-    const text = ctx.message?.text || '';
+    const text = rawMsg?.text || '';
     const parsed = TaskParser.parseUserTask(text);
 
     if (!parsed) {
@@ -43,7 +53,7 @@ export class TaskHandlers {
         '📌 **Hướng dẫn giao việc cá nhân:**\n' +
         '👉 Cú pháp: `/task @username <nội dung công việc> [hạn: YYYY-MM-DD HH:mm]`\n' +
         '💡 Ví dụ: `/task @nam Làm slide giới thiệu sản phẩm mới hạn: 2026-08-20 17:00 [gấp]`',
-        { parse_mode: 'Markdown', reply_to_message_id: ctx.message?.message_id }
+        { parse_mode: 'Markdown', reply_to_message_id: rawMsg?.message_id }
       );
       return;
     }
@@ -61,7 +71,7 @@ export class TaskHandlers {
       groupChatId: ctx.chat?.id.toString(),
     });
 
-    const tagString = `@${parsed.targetRaw}`;
+    const tagString = `@${parsed.targetRaw.replace(/_/g, '\\_')}`;
     const messageText = `🔔 ${tagString} Bạn có công việc mới được giao!\n\n` + formatTaskMessage(task);
 
     const sentMsg = await ctx.reply(messageText, {
@@ -76,19 +86,28 @@ export class TaskHandlers {
    * /task_dept <tên phòng> <nội dung> [hạn: YYYY-MM-DD HH:mm]
    */
   public static async assignDepartmentTask(ctx: Context) {
-    const senderId = ctx.from?.id;
+    const isChannel = ctx.chat?.type === 'channel';
+    const rawMsg = ctx.message || ctx.channelPost;
+    let senderId = ctx.from?.id;
+
+    if (isChannel && !senderId) {
+      senderId = CONFIG.ADMIN_IDS[0] || (ctx.chat?.id ? Math.abs(ctx.chat.id) : 111111);
+    }
+
     if (!senderId) return;
 
-    UserService.upsertUser(senderId, ctx.from.username, ctx.from.first_name);
+    if (ctx.from?.id) {
+      UserService.upsertUser(ctx.from.id, ctx.from.username, ctx.from.first_name);
+    }
 
-    if (!UserService.isAdmin(senderId)) {
+    if (!isChannel && !UserService.isAdmin(senderId)) {
       await ctx.reply('⚠️ Bạn cần có quyền Quản trị viên (Admin/Manager) để giao việc theo phòng ban.', {
-        reply_to_message_id: ctx.message?.message_id,
+        reply_to_message_id: rawMsg?.message_id,
       });
       return;
     }
 
-    const text = ctx.message?.text || '';
+    const text = rawMsg?.text || '';
     const parsed = TaskParser.parseDepartmentTask(text);
 
     if (!parsed) {
@@ -101,41 +120,37 @@ export class TaskHandlers {
         '💡 Ví dụ: `/task_dept marketing Thiết kế banner sự kiện tuần sau hạn: 17h`\n\n' +
         `🏢 **Danh sách phòng ban hiện có:**\n${deptList || '_Chưa có phòng ban nào_'}\n\n` +
         '👉 Dùng `/add_dept <mã> <tên>` để tạo phòng ban.',
-        { parse_mode: 'Markdown', reply_to_message_id: ctx.message?.message_id }
+        { parse_mode: 'Markdown', reply_to_message_id: rawMsg?.message_id }
       );
       return;
     }
 
     const dept = DepartmentService.findByNameOrSlug(parsed.targetRaw);
     if (!dept) {
-      await ctx.reply(
-        `❌ Không tìm thấy phòng ban **"${parsed.targetRaw}"**.\n` +
-        `Gõ \`/departments\` để xem danh sách phòng ban hoặc \`/add_dept\` để tạo mới.`,
-        { reply_to_message_id: ctx.message?.message_id }
-      );
+      await ctx.reply(`❌ Không tìm thấy phòng ban nào khớp với: "${parsed.targetRaw}". Dùng \`/departments\` để xem danh sách.`, {
+        reply_to_message_id: rawMsg?.message_id,
+      });
       return;
     }
+
+    const deptMembers = UserService.getByDepartment(dept.id);
+    const tagList = deptMembers
+      .map(u => u.username ? `@${u.username.replace(/_/g, '\\_')}` : u.full_name)
+      .filter(Boolean);
+    const tagString = tagList.length > 0 ? tagList.join(' ') : `phòng ${dept.name}`;
 
     const task = TaskService.create({
       title: parsed.title,
       description: parsed.description,
       assignedBy: senderId,
-      departmentId: dept.id,
       deadline: parsed.deadline,
       priority: parsed.priority,
       groupChatId: ctx.chat?.id.toString(),
     });
 
-    const members = UserService.getByDepartment(dept.id);
-    let tagString = '';
-    if (members.length > 0) {
-      const tags = members.map(m => (m.username ? `@${m.username}` : m.full_name)).join(' ');
-      tagString = `📢 **Mời các thành viên nhận việc:** ${tags}\n\n`;
-    } else {
-      tagString = `ℹ️ _Phòng ${dept.name} hiện chưa có nhân viên nào. Gõ /set_dept để gán nhân sự._\n\n`;
-    }
-
-    const messageText = `🏢 **CÔNG VIỆC PHÒNG ${dept.name.toUpperCase()}**\n\n` + tagString + formatTaskMessage(task);
+    const messageText = `📢 **GIAO VIỆC PHÒNG ${dept.name.toUpperCase()}**\n` +
+      `👥 **Thành viên:** ${tagString}\n\n` +
+      formatTaskMessage(task);
 
     const sentMsg = await ctx.reply(messageText, {
       parse_mode: 'Markdown',
@@ -146,97 +161,112 @@ export class TaskHandlers {
   }
 
   /**
-   * /my_tasks: Xem danh sách công việc của cá nhân
+   * /my_tasks: Xem danh sách task được giao cho bản thân
    */
   public static async getMyTasks(ctx: Context) {
-    const senderId = ctx.from?.id;
-    if (!senderId) return;
+    const userId = ctx.from?.id;
+    if (!userId) return;
 
-    UserService.upsertUser(senderId, ctx.from.username, ctx.from.first_name);
+    UserService.upsertUser(userId, ctx.from.username, ctx.from.first_name);
 
-    const tasks = TaskService.getByUser(senderId);
-    if (tasks.length === 0) {
-      await ctx.reply('🎉 Bạn hiện không có công việc nào đang chờ xử lý!');
+    const tasks = TaskService.getByUser(userId);
+    const activeTasks = tasks.filter(t => t.status === 'PENDING' || t.status === 'IN_PROGRESS');
+
+    if (activeTasks.length === 0) {
+      await ctx.reply('✨ Bạn hiện tại không có công việc nào đang chờ xử lý. Tuyệt vời!');
       return;
     }
 
-    let msg = `📋 **DANH SÁCH CÔNG VIỆC CỦA BẠN (${tasks.length})**\n\n`;
-    for (const t of tasks) {
-      const statusIcon = t.status === 'IN_PROGRESS' ? '⚙️' : '⏳';
-      const deadlineInfo = t.deadline ? ` | ⏰ Hạn: \`${t.deadline}\`` : '';
-      msg += `${statusIcon} **#${t.id}:** ${t.title} (${t.status})${deadlineInfo}\n`;
+    let msg = `📋 **DANH SÁCH CÔNG VIỆC CỦA BẠN (${activeTasks.length}):**\n\n`;
+    for (const t of activeTasks) {
+      const statusIcon = t.status === 'PENDING' ? '⏳ Chờ nhận' : '⚡ Đang làm';
+      const deadlineStr = t.deadline ? `\n   ⏰ Hạn chót: \`${t.deadline}\`` : '';
+      msg += `• **#${t.id}**: ${t.title} [${statusIcon}]${deadlineStr}\n`;
     }
+    msg += `\n👉 Gõ \`/task\` hoặc bấm các nút trên tin nhắn task để nhận việc / hoàn thành.`;
 
-    msg += '\n👉 Nhấn vào từng công việc để cập nhật trạng thái.';
     await ctx.reply(msg, { parse_mode: 'Markdown' });
   }
 
   /**
-   * /all_tasks: Xem toàn bộ công việc công ty
+   * /all_tasks: Xem danh sách toàn bộ task trong hệ thống (chỉ Admin)
    */
   public static async getAllTasks(ctx: Context) {
-    const senderId = ctx.from?.id;
-    if (!senderId) return;
-
-    if (!UserService.isAdmin(senderId)) {
-      await ctx.reply('⚠️ Lệnh này chỉ dành cho Quản trị viên (Admin/Manager).');
+    const isChannel = ctx.chat?.type === 'channel';
+    const senderId = ctx.from?.id || (isChannel ? (CONFIG.ADMIN_IDS[0] || 111111) : undefined);
+    if (!senderId || (!isChannel && !UserService.isAdmin(senderId))) {
+      await ctx.reply('⚠️ Chỉ Quản trị viên mới có quyền xem toàn bộ công việc.');
       return;
     }
 
     const tasks = TaskService.getAll(undefined, 20);
     if (tasks.length === 0) {
-      await ctx.reply('Hiện chưa có công việc nào được ghi nhận.');
+      await ctx.reply('✨ Chưa có công việc nào được tạo trong hệ thống.');
       return;
     }
 
-    let msg = `🏢 **TỔNG HỢP CÔNG VIỆC CÔNG TY (Gần nhất ${tasks.length})**\n\n`;
+    let msg = `📊 **TỔNG HỢP CÔNG VIỆC TOÀN CÔNG TY (20 task gần nhất):**\n\n`;
     for (const t of tasks) {
-      const statusIcon = {
-        PENDING: '⏳',
-        IN_PROGRESS: '⚙️',
-        COMPLETED: '✅',
-        CANCELLED: '🚫',
-      }[t.status];
+      let icon = '⏳';
+      if (t.status === 'IN_PROGRESS') icon = '⚡';
+      else if (t.status === 'COMPLETED') icon = '✅';
+      else if (t.status === 'CANCELLED') icon = '🚫';
 
-      const assignee = t.assignee_username 
-        ? `@${t.assignee_username}` 
-        : (t.department_name ? `Phòng ${t.department_name}` : 'Chưa có');
-
-      msg += `${statusIcon} **#${t.id}**: ${t.title}\n   👤 Nhận: ${assignee} | 📊 ${t.status}\n`;
+      const target = t.assignee_username ? `@${t.assignee_username}` : (t.assignee_name || 'Chưa gán');
+      msg += `• **#${t.id}** [${icon}] ${t.title}\n   🎯 Giao: ${target} | Hạn: \`${t.deadline || 'Không có'}\`\n\n`;
     }
 
     await ctx.reply(msg, { parse_mode: 'Markdown' });
   }
 
   /**
-   * /pending_tasks: Xem danh sách việc đang chờ nhận
+   * /pending_tasks: Xem các task đang chờ nhận hoặc đang làm
    */
   public static async getPendingTasks(ctx: Context) {
-    const tasks = TaskService.getAll('PENDING', 20);
-    if (tasks.length === 0) {
-      await ctx.reply('✨ Không có công việc nào đang chờ nhận việc!');
+    const isChannel = ctx.chat?.type === 'channel';
+    const senderId = ctx.from?.id || (isChannel ? (CONFIG.ADMIN_IDS[0] || 111111) : undefined);
+    if (!senderId || (!isChannel && !UserService.isAdmin(senderId))) {
+      await ctx.reply('⚠️ Chỉ Quản trị viên mới có quyền xem danh sách này.');
       return;
     }
 
-    let msg = `⏳ **DANH SÁCH VIỆC ĐANG CHỜ NHẬN (${tasks.length})**\n\n`;
-    for (const t of tasks) {
-      const target = t.assignee_username ? `@${t.assignee_username}` : (t.department_name ? `Phòng ${t.department_name}` : 'Tất cả');
-      msg += `• **#${t.id}**: ${t.title}\n   🎯 Cho: ${target}\n`;
+    const pending = TaskService.getAll('PENDING', 20);
+    const inProgress = TaskService.getAll('IN_PROGRESS', 20);
+    const tasks = [...pending, ...inProgress];
+
+    if (tasks.length === 0) {
+      await ctx.reply('🎉 Toàn bộ công việc đã hoàn thành sạch sẽ!');
+      return;
     }
+
+    let msg = `⏳ **CÁC CÔNG VIỆC CHƯA HOÀN THÀNH (${tasks.length}):**\n\n`;
+    for (const t of tasks) {
+      const icon = t.status === 'PENDING' ? '⏳' : '⚡';
+      const target = t.assignee_username ? `@${t.assignee_username}` : (t.assignee_name || 'Chưa nhận');
+      msg += `• **#${t.id}** [${icon}] ${t.title}\n   🎯 Phụ trách: ${target} | Hạn: \`${t.deadline || 'Không có'}\`\n\n`;
+    }
+
     await ctx.reply(msg, { parse_mode: 'Markdown' });
   }
 
   /**
-   * /done_tasks: Xem danh sách việc đã hoàn thành
+   * /done_tasks: Xem các task đã hoàn thành gần đây
    */
   public static async getDoneTasks(ctx: Context) {
-    const tasks = TaskService.getAll('COMPLETED', 20);
-    if (tasks.length === 0) {
-      await ctx.reply('Chưa có công việc nào hoàn thành gần đây.');
+    const isChannel = ctx.chat?.type === 'channel';
+    const senderId = ctx.from?.id || (isChannel ? (CONFIG.ADMIN_IDS[0] || 111111) : undefined);
+    if (!senderId || (!isChannel && !UserService.isAdmin(senderId))) {
+      await ctx.reply('⚠️ Chỉ Quản trị viên mới có quyền xem danh sách này.');
       return;
     }
 
-    let msg = `✅ **DANH SÁCH VIỆC ĐÃ HOÀN THÀNH (Gần nhất ${tasks.length})**\n\n`;
+    const tasks = TaskService.getAll('COMPLETED', 15);
+    if (tasks.length === 0) {
+      await ctx.reply('Chưa có công việc nào hoàn thành.');
+      return;
+    }
+
+    let msg = `✅ **CÁC CÔNG VIỆC ĐÃ HOÀN THÀNH GẦN ĐÂY:**\n\n`;
     for (const t of tasks) {
       const target = t.assignee_username ? `@${t.assignee_username}` : (t.assignee_name || 'Nhân sự');
       msg += `• **#${t.id}**: ${t.title} (${target})\n   🎉 Xong lúc: \`${t.completed_at || t.updated_at}\`\n`;
@@ -248,13 +278,20 @@ export class TaskHandlers {
    * /edit_task <id> <nội dung mới> [hạn: ...]
    */
   public static async handleEditTask(ctx: Context) {
-    const senderId = ctx.from?.id;
-    if (!senderId || !UserService.isAdmin(senderId)) {
+    const isChannel = ctx.chat?.type === 'channel';
+    const rawMsg = ctx.message || ctx.channelPost;
+    let senderId = ctx.from?.id;
+
+    if (isChannel && !senderId) {
+      senderId = CONFIG.ADMIN_IDS[0] || (ctx.chat?.id ? Math.abs(ctx.chat.id) : 111111);
+    }
+
+    if (!senderId || (!isChannel && !UserService.isAdmin(senderId))) {
       await ctx.reply('⚠️ Chỉ Quản trị viên mới có quyền chỉnh sửa công việc.');
       return;
     }
 
-    const text = (ctx.message?.text || '').replace(/^\/edit_task(@\w+)?\s*/i, '').trim();
+    const text = (rawMsg?.text || '').replace(/^\/edit_task(@\w+)?\s*/i, '').trim();
     const parts = text.split(/\s+/);
 
     if (parts.length < 2 || isNaN(Number(parts[0]))) {
@@ -313,13 +350,20 @@ export class TaskHandlers {
    * /del_task <id>
    */
   public static async handleDelTask(ctx: Context) {
-    const senderId = ctx.from?.id;
-    if (!senderId || !UserService.isAdmin(senderId)) {
+    const isChannel = ctx.chat?.type === 'channel';
+    const rawMsg = ctx.message || ctx.channelPost;
+    let senderId = ctx.from?.id;
+
+    if (isChannel && !senderId) {
+      senderId = CONFIG.ADMIN_IDS[0] || (ctx.chat?.id ? Math.abs(ctx.chat.id) : 111111);
+    }
+
+    if (!senderId || (!isChannel && !UserService.isAdmin(senderId))) {
       await ctx.reply('⚠️ Chỉ Quản trị viên mới có quyền xóa công việc.');
       return;
     }
 
-    const text = (ctx.message?.text || '').replace(/^\/(del_task|delete_task)(@\w+)?\s*/i, '').trim();
+    const text = (rawMsg?.text || '').replace(/^\/(del_task|delete_task)(@\w+)?\s*/i, '').trim();
     const taskId = Number(text);
 
     if (!text || isNaN(taskId)) {
@@ -429,11 +473,18 @@ export class TaskHandlers {
       const duration = extraParam as '2h' | '4h' | '1d' | '2d';
       const newDeadline = TaskHandlers.calculateFutureTime(duration);
 
-      TaskHandlers.pendingExtensions.set(userId, {
+      TaskHandlers.pendingExtensions.set(String(userId), {
         taskId,
         newDeadline,
         isCustom: false,
       });
+      if (ctx.chat?.id) {
+        TaskHandlers.pendingExtensions.set(String(ctx.chat.id), {
+          taskId,
+          newDeadline,
+          isCustom: false,
+        });
+      }
 
       await ctx.answerCallbackQuery({ text: `Đã chọn gia hạn +${duration}` });
       await ctx.reply(
@@ -446,10 +497,16 @@ export class TaskHandlers {
 
     // 5. Tự nhập hạn & lý do
     else if (subAction === 'ext_custom') {
-      TaskHandlers.pendingExtensions.set(userId, {
+      TaskHandlers.pendingExtensions.set(String(userId), {
         taskId,
         isCustom: true,
       });
+      if (ctx.chat?.id) {
+        TaskHandlers.pendingExtensions.set(String(ctx.chat.id), {
+          taskId,
+          isCustom: true,
+        });
+      }
 
       await ctx.answerCallbackQuery();
       await ctx.reply(
@@ -504,19 +561,30 @@ export class TaskHandlers {
    * Bắt tin nhắn văn bản khi người dùng đang trong trạng thái nhập lý do gia hạn
    */
   public static async handleTextMessage(ctx: Context): Promise<boolean> {
-    const userId = ctx.from?.id;
-    const text = ctx.message?.text?.trim();
-    if (!userId || !text) return false;
+    const rawMsg = ctx.message || ctx.channelPost;
+    const text = rawMsg?.text?.trim();
+    if (!text) return false;
 
     // Bỏ qua nếu là lệnh bắt đầu bằng dấu /
     if (text.startsWith('/')) return false;
 
-    const pending = TaskHandlers.pendingExtensions.get(userId);
+    const userIdStr = ctx.from?.id ? String(ctx.from.id) : undefined;
+    const chatIdStr = ctx.chat?.id ? String(ctx.chat.id) : undefined;
+
+    let pending: PendingExtensionState | undefined;
+    if (userIdStr && TaskHandlers.pendingExtensions.has(userIdStr)) {
+      pending = TaskHandlers.pendingExtensions.get(userIdStr);
+      TaskHandlers.pendingExtensions.delete(userIdStr);
+      if (chatIdStr) TaskHandlers.pendingExtensions.delete(chatIdStr);
+    } else if (chatIdStr && TaskHandlers.pendingExtensions.has(chatIdStr)) {
+      pending = TaskHandlers.pendingExtensions.get(chatIdStr);
+      TaskHandlers.pendingExtensions.delete(chatIdStr);
+    }
+
     if (!pending) return false;
 
     const task = TaskService.getById(pending.taskId);
     if (!task) {
-      TaskHandlers.pendingExtensions.delete(userId);
       return false;
     }
 
@@ -540,10 +608,12 @@ export class TaskHandlers {
       targetDeadline = TaskHandlers.calculateFutureTime('2h');
     }
 
-    const updated = TaskService.extendDeadline(pending.taskId, targetDeadline, reason, userId);
-    TaskHandlers.pendingExtensions.delete(userId);
+    const authorId = ctx.from?.id || (CONFIG.ADMIN_IDS[0] || 111111);
+    const updated = TaskService.extendDeadline(pending.taskId, targetDeadline, reason, authorId);
 
-    const userName = ctx.from.username ? `@${ctx.from.username}` : ctx.from.first_name;
+    const userName = ctx.from?.username 
+      ? `@${ctx.from.username.replace(/_/g, '\\_')}` 
+      : (ctx.from?.first_name || ctx.chat?.title || 'Người phụ trách');
 
     let responseMsg = `✅ **ĐÃ GIA HẠN CÔNG VIỆC #${task.id} THÀNH CÔNG!**\n\n`;
     responseMsg += `📌 **Tiêu đề:** **${task.title}**\n`;
