@@ -50,10 +50,10 @@ export class TaskHandlers {
 
     if (!parsed) {
       await ctx.reply(
-        '📌 **Hướng dẫn giao việc cá nhân:**\n' +
-        '👉 Cú pháp: `/task @username <nội dung công việc> [hạn: YYYY-MM-DD HH:mm]`\n' +
-        '💡 Ví dụ: `/task @nam Làm slide giới thiệu sản phẩm mới hạn: 2026-08-20 17:00 [gấp]`',
-        { parse_mode: 'Markdown', reply_to_message_id: rawMsg?.message_id }
+        '📌 <b>Hướng dẫn giao việc cá nhân:</b>\n' +
+        '👉 Cú pháp: <code>/task @username &lt;nội dung công việc&gt; [hạn: YYYY-MM-DD HH:mm]</code>\n' +
+        '💡 Ví dụ: <code>/task @nam Làm slide giới thiệu sản phẩm mới hạn: 2026-08-20 17:00 [gấp]</code>',
+        { parse_mode: 'HTML', reply_to_message_id: rawMsg?.message_id }
       );
       return;
     }
@@ -71,11 +71,12 @@ export class TaskHandlers {
       groupChatId: ctx.chat?.id.toString(),
     });
 
-    const tagString = `@${parsed.targetRaw.replace(/_/g, '\\_')}`;
+    const cleanUsername = parsed.targetRaw.replace(/^@+/, '').trim();
+    const tagString = cleanUsername ? `@${cleanUsername}` : '';
     const messageText = `🔔 ${tagString} Bạn có công việc mới được giao!\n\n` + formatTaskMessage(task);
 
     const sentMsg = await ctx.reply(messageText, {
-      parse_mode: 'Markdown',
+      parse_mode: 'HTML',
       reply_markup: getTaskKeyboard(task),
     });
 
@@ -112,22 +113,22 @@ export class TaskHandlers {
 
     if (!parsed) {
       const depts = DepartmentService.getAll();
-      const deptList = depts.map(d => `• \`${d.id}\` (${d.name})`).join('\n');
+      const deptList = depts.map(d => `• <code>${d.id}</code> (${d.name})`).join('\n');
 
       await ctx.reply(
-        '👥 **Hướng dẫn giao việc theo phòng ban:**\n' +
-        '👉 Cú pháp: `/task_dept <tên_phòng> <nội dung> [hạn: YYYY-MM-DD HH:mm]`\n' +
-        '💡 Ví dụ: `/task_dept marketing Thiết kế banner sự kiện tuần sau hạn: 17h`\n\n' +
-        `🏢 **Danh sách phòng ban hiện có:**\n${deptList || '_Chưa có phòng ban nào_'}\n\n` +
-        '👉 Dùng `/add_dept <mã> <tên>` để tạo phòng ban.',
-        { parse_mode: 'Markdown', reply_to_message_id: rawMsg?.message_id }
+        '👥 <b>Hướng dẫn giao việc theo phòng ban:</b>\n' +
+        '👉 Cú pháp: <code>/task_dept &lt;tên_phòng&gt; &lt;nội dung&gt; [hạn: YYYY-MM-DD HH:mm]</code>\n' +
+        '💡 Ví dụ: <code>/task_dept marketing Thiết kế banner sự kiện tuần sau hạn: 17h</code>\n\n' +
+        `🏢 <b>Danh sách phòng ban hiện có:</b>\n${deptList || '<i>Chưa có phòng ban nào</i>'}\n\n` +
+        '👉 Dùng <code>/add_dept &lt;mã&gt; &lt;tên&gt;</code> để tạo phòng ban.',
+        { parse_mode: 'HTML', reply_to_message_id: rawMsg?.message_id }
       );
       return;
     }
 
     const dept = DepartmentService.findByNameOrSlug(parsed.targetRaw);
     if (!dept) {
-      await ctx.reply(`❌ Không tìm thấy phòng ban nào khớp với: "${parsed.targetRaw}". Dùng \`/departments\` để xem danh sách.`, {
+      await ctx.reply(`❌ Không tìm thấy phòng ban nào khớp với: "${parsed.targetRaw}". Dùng /departments để xem danh sách.`, {
         reply_to_message_id: rawMsg?.message_id,
       });
       return;
@@ -135,7 +136,7 @@ export class TaskHandlers {
 
     const deptMembers = UserService.getByDepartment(dept.id);
     const tagList = deptMembers
-      .map(u => u.username ? `@${u.username.replace(/_/g, '\\_')}` : u.full_name)
+      .map(u => u.username ? `@${u.username.replace(/^@+/, '')}` : u.full_name)
       .filter(Boolean);
     const tagString = tagList.length > 0 ? tagList.join(' ') : `phòng ${dept.name}`;
 
@@ -148,12 +149,12 @@ export class TaskHandlers {
       groupChatId: ctx.chat?.id.toString(),
     });
 
-    const messageText = `📢 **GIAO VIỆC PHÒNG ${dept.name.toUpperCase()}**\n` +
-      `👥 **Thành viên:** ${tagString}\n\n` +
+    const messageText = `📢 <b>GIAO VIỆC PHÒNG ${dept.name.toUpperCase()}</b>\n` +
+      `👥 <b>Thành viên:</b> ${tagString}\n\n` +
       formatTaskMessage(task);
 
     const sentMsg = await ctx.reply(messageText, {
-      parse_mode: 'Markdown',
+      parse_mode: 'HTML',
       reply_markup: getTaskKeyboard(task),
     });
 

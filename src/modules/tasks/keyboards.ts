@@ -38,33 +38,41 @@ export function getExtensionOptionsKeyboard(taskId: number): InlineKeyboard {
     .text('✍️ Tự nhập hạn & lý do', `task:ext_custom:${taskId}`);
 }
 
+function escapeHtml(str?: string | null): string {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 export function formatOverduePromptMessage(task: Task): string {
   let targetDisplay = '';
-  const titlePart = task.assignee_title ? ` - ${task.assignee_title}` : '';
+  const titlePart = task.assignee_title ? ` - ${escapeHtml(task.assignee_title)}` : '';
 
   if (task.assignee_username) {
-    targetDisplay = `@${task.assignee_username} (${task.assignee_name}${titlePart})`;
+    targetDisplay = `@${task.assignee_username} (${escapeHtml(task.assignee_name)}${titlePart})`;
   } else if (task.assignee_name) {
-    targetDisplay = `${task.assignee_name}${titlePart}`;
+    targetDisplay = `${escapeHtml(task.assignee_name)}${titlePart}`;
   } else if (task.department_name) {
-    targetDisplay = `👥 Toàn bộ [Phòng ${task.department_name}]`;
+    targetDisplay = `👥 Toàn bộ [Phòng ${escapeHtml(task.department_name)}]`;
   } else {
     targetDisplay = 'Chưa chỉ định';
   }
 
-  let msg = `⏰ **THÔNG BÁO HẾT HẠN CÔNG VIỆC #${task.id}** ⏰\n\n`;
-  msg += `📌 **Tiêu đề:** **${task.title}**\n`;
+  let msg = `⏰ <b>THÔNG BÁO HẾT HẠN CÔNG VIỆC #${task.id}</b> ⏰\n\n`;
+  msg += `📌 <b>Tiêu đề:</b> <b>${escapeHtml(task.title)}</b>\n`;
   if (task.description) {
-    msg += `📝 **Nội dung:** ${task.description}\n`;
+    msg += `📝 <b>Nội dung:</b> <i>${escapeHtml(task.description)}</i>\n`;
   }
-  msg += `🎯 **Người phụ trách:** ${targetDisplay}\n`;
-  msg += `⏳ **Hạn chót:** \`${task.deadline}\`\n`;
+  msg += `🎯 <b>Người phụ trách:</b> ${targetDisplay}\n`;
+  msg += `⏳ <b>Hạn chót:</b> <code>${escapeHtml(task.deadline)}</code>\n`;
 
   if (task.extension_count > 0) {
-    msg += `🔄 **Đã xin gia hạn:** ${task.extension_count} lần\n`;
+    msg += `🔄 <b>Đã xin gia hạn:</b> ${task.extension_count} lần\n`;
   }
 
-  msg += `\n👉 **Vui lòng xác nhận kết quả thực hiện:**`;
+  msg += `\n👉 <b>Vui lòng xác nhận kết quả thực hiện:</b>`;
   return msg;
 }
 
@@ -84,45 +92,45 @@ export function formatTaskMessage(task: Task, extraNote?: string): string {
   }[task.priority || 'NORMAL'];
 
   let targetDisplay = '';
-  const titlePart = task.assignee_title ? ` - ${task.assignee_title}` : '';
+  const titlePart = task.assignee_title ? ` - ${escapeHtml(task.assignee_title)}` : '';
 
   if (task.assignee_username) {
-    targetDisplay = `@${task.assignee_username} (${task.assignee_name}${titlePart})`;
+    targetDisplay = `@${task.assignee_username} (${escapeHtml(task.assignee_name)}${titlePart})`;
   } else if (task.assignee_name) {
-    targetDisplay = `${task.assignee_name}${titlePart}`;
+    targetDisplay = `${escapeHtml(task.assignee_name)}${titlePart}`;
   } else if (task.department_name) {
-    targetDisplay = `👥 Toàn bộ [Phòng ${task.department_name}]`;
+    targetDisplay = `👥 Toàn bộ [Phòng ${escapeHtml(task.department_name)}]`;
   } else {
     targetDisplay = 'Chưa chỉ định';
   }
 
   const assignerDisplay = task.assigner_username 
-    ? `@${task.assigner_username} (${task.assigner_name})`
-    : task.assigner_name || 'Quản trị viên';
+    ? `@${task.assigner_username} (${escapeHtml(task.assigner_name)})`
+    : escapeHtml(task.assigner_name) || 'Quản trị viên';
 
-  let msg = `📌 **CÔNG VIỆC #${task.id}: ${task.title}**\n\n`;
+  let msg = `📌 <b>CÔNG VIỆC #${task.id}: ${escapeHtml(task.title)}</b>\n\n`;
   if (task.description) {
-    msg += `📝 **Nội dung:** ${task.description}\n`;
+    msg += `📝 <b>Nội dung:</b> <i>${escapeHtml(task.description)}</i>\n`;
   }
-  msg += `👤 **Người giao:** ${assignerDisplay}\n`;
-  msg += `🎯 **Người nhận:** ${targetDisplay}\n`;
-  msg += `📊 **Trạng thái:** ${statusEmoji}\n`;
-  msg += `⚡ **Mức độ:** ${priorityEmoji}\n`;
+  msg += `👤 <b>Người giao:</b> ${assignerDisplay}\n`;
+  msg += `🎯 <b>Người nhận:</b> ${targetDisplay}\n`;
+  msg += `📊 <b>Trạng thái:</b> ${statusEmoji}\n`;
+  msg += `⚡ <b>Mức độ:</b> ${priorityEmoji}\n`;
 
   if (task.deadline) {
-    msg += `⏰ **Hạn chót:** \`${task.deadline}\`\n`;
+    msg += `⏰ <b>Hạn chót:</b> <code>${escapeHtml(task.deadline)}</code>\n`;
   }
 
   if (task.extension_count > 0) {
-    msg += `🔄 **Gia hạn:** ${task.extension_count} lần (Lý do: _${task.extension_reason || 'n/a'}_)\n`;
+    msg += `🔄 <b>Gia hạn:</b> ${task.extension_count} lần (Lý do: <i>${escapeHtml(task.extension_reason || 'n/a')}</i>)\n`;
   }
 
   if (task.completed_at) {
-    msg += `🎉 **Hoàn thành lúc:** \`${task.completed_at}\`\n`;
+    msg += `🎉 <b>Hoàn thành lúc:</b> <code>${escapeHtml(task.completed_at)}</code>\n`;
   }
 
   if (extraNote) {
-    msg += `\n💬 **Ghi chú:** ${extraNote}\n`;
+    msg += `\n💬 <b>Ghi chú:</b> <i>${escapeHtml(extraNote)}</i>\n`;
   }
 
   return msg;
