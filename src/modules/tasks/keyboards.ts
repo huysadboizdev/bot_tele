@@ -7,15 +7,21 @@ export function getTaskKeyboard(task: Task): InlineKeyboard {
   if (task.status === 'PENDING') {
     keyboard
       .text('🚀 Nhận việc', `task:accept:${task.id}`)
-      .text('❌ Hủy', `task:cancel:${task.id}`);
+      .text('❌ Hủy', `task:cancel:${task.id}`)
+      .row()
+      .text('✏️ Sửa', `task:edit:${task.id}`)
+      .text('🗑️ Xóa', `task:del_confirm:${task.id}`);
   } else if (task.status === 'IN_PROGRESS') {
     keyboard
       .text('📝 Báo tiến độ', `task:progress:${task.id}`)
       .text('✅ Hoàn thành', `task:complete:${task.id}`)
       .row()
-      .text('❌ Hủy task', `task:cancel:${task.id}`);
+      .text('✏️ Sửa', `task:edit:${task.id}`)
+      .text('🗑️ Xóa', `task:del_confirm:${task.id}`);
   } else {
-    keyboard.text('📋 Xem chi tiết', `task:detail:${task.id}`);
+    keyboard
+      .text('📋 Chi tiết', `task:detail:${task.id}`)
+      .text('🗑️ Xóa', `task:del_confirm:${task.id}`);
   }
 
   return keyboard;

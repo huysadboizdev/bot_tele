@@ -1,4 +1,4 @@
-import { Context } from 'grammy';
+import { Context, InlineKeyboard } from 'grammy';
 import { TaskService, Task } from './service';
 import {
   formatTaskMessage,
@@ -535,7 +535,7 @@ export class TaskHandlers {
         await ctx.answerCallbackQuery({ text: 'Đã hủy công việc.' });
         const updatedMsg = formatTaskMessage(updated, `🚫 ${userName} đã hủy công việc này.`);
         await ctx.editMessageText(updatedMsg, {
-          parse_mode: 'Markdown',
+          parse_mode: 'HTML',
           reply_markup: getTaskKeyboard(updated),
         });
       }
@@ -551,9 +551,59 @@ export class TaskHandlers {
 
     // 8. Xem chi tiết (Detail)
     else if (subAction === 'detail') {
-      await ctx.answerCallbackQuery({
-        text: `Chi tiết task #${task.id}: ${task.title}\nTrạng thái: ${task.status}`,
-        show_alert: true
+      const target = TaskService.getById(taskId);
+      if (target) {
+        await ctx.answerCallbackQuery();
+        await ctx.editMessageText(formatTaskMessage(target), {
+          parse_mode: 'HTML',
+          reply_markup: getTaskKeyboard(target),
+        });
+      }
+    }
+
+    // 9. Nút Sửa công việc (Edit Task Prompt)
+    else if (subAction === 'edit') {
+      await ctx.answerCallbackQuery();
+      await ctx.reply(
+        `✏️ <b>HƯỚNG DẪN SỬA CÔNG VIỆC #${task.id}:</b>\n\n` +
+        `👉 Cú pháp: <code>/edit_task ${task.id} &lt;Nội dung mới&gt; [hạn: YYYY-MM-DD HH:mm] [gấp]</code>\n` +
+        `💡 Ví dụ: <code>/edit_task ${task.id} ${task.title} (Cập nhật) hạn: mai 17h</code>`,
+        { parse_mode: 'HTML' }
+      );
+    }
+
+    // 10. Nút Xóa công việc (Delete Task Confirmation)
+    else if (subAction === 'del_confirm') {
+      const isAdmin = UserService.isAdmin(userId);
+      const isAssigner = task.assigned_by === userId;
+
+      if (!isAdmin && !isAssigner) {
+        await ctx.answerCallbackQuery({ text: '⚠️ Chỉ người giao việc hoặc Admin mới có quyền xóa task.', show_alert: true });
+        return;
+      }
+
+      const confirmKb = new InlineKeyboard()
+        .text('⚠️ Xác Nhận Xóa', `task:delete_confirmed:${taskId}`)
+        .text('Quay Lại', `task:detail:${taskId}`);
+
+      await ctx.answerCallbackQuery();
+      await ctx.editMessageReplyMarkup({ reply_markup: confirmKb });
+    }
+
+    // 11. Đã bấm xác nhận Xóa
+    else if (subAction === 'delete_confirmed') {
+      const isAdmin = UserService.isAdmin(userId);
+      const isAssigner = task.assigned_by === userId;
+
+      if (!isAdmin && !isAssigner) {
+        await ctx.answerCallbackQuery({ text: '⚠️ Bạn không có quyền xóa.', show_alert: true });
+        return;
+      }
+
+      TaskService.deleteTask(taskId);
+      await ctx.answerCallbackQuery({ text: 'Đã xóa công việc thành công!' });
+      await ctx.editMessageText(`🗑️ <b>Công việc #${taskId} ("${task.title}") đã được xóa hoàn toàn khỏi hệ thống bởi ${userName}.</b>`, {
+        parse_mode: 'HTML',
       });
     }
   }

@@ -1,15 +1,24 @@
 import { InlineKeyboard } from 'grammy';
 import { Meeting, MeetingService } from './service';
 
+function escapeHtml(str?: string | null): string {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 export function getMeetingKeyboard(meetingId: number): InlineKeyboard {
   return new InlineKeyboard()
     .text('✅ Tham gia', `meeting:confirm:${meetingId}`)
     .text('❌ Báo vắng', `meeting:decline:${meetingId}`)
     .row()
-    .text('📑 Xem Nội Dung', `meeting:view_notes:${meetingId}`)
-    .text('✍️ Nhập Nội Dung', `meeting:input_notes:${meetingId}`)
+    .text('📑 Xem Biên Bản', `meeting:view_notes:${meetingId}`)
+    .text('✍️ Nhập Biên Bản', `meeting:input_notes:${meetingId}`)
     .row()
-    .text('👥 Xem người tham gia', `meeting:list:${meetingId}`);
+    .text('👥 Điểm danh', `meeting:list:${meetingId}`)
+    .text('🗑️ Hủy Cuộc Họp', `meeting:del_confirm:${meetingId}`);
 }
 
 export function getDateFilterKeyboard(): InlineKeyboard {
@@ -24,37 +33,37 @@ export function getDateFilterKeyboard(): InlineKeyboard {
 }
 
 export function formatMeetingMessage(meeting: Meeting, customPrefix?: string): string {
-  const prefix = customPrefix || '📢 **THÔNG BÁO CUỘC HỌP MỚI**';
+  const prefix = customPrefix || '📢 <b>THÔNG BÁO CUỘC HỌP MỚI</b>';
   const participants = MeetingService.getParticipants(meeting.id);
 
   let targetDisplay = 'Toàn thể công ty';
   if (meeting.target_type === 'DEPARTMENT' && meeting.target_value) {
-    targetDisplay = `Phòng ${meeting.target_value.toUpperCase()}`;
+    targetDisplay = `Phòng ${escapeHtml(meeting.target_value.toUpperCase())}`;
   } else if (meeting.target_type === 'USERS' && meeting.target_value) {
-    targetDisplay = meeting.target_value.replace(/_/g, '\\_');
+    targetDisplay = escapeHtml(meeting.target_value);
   }
 
   let msg = `${prefix}\n\n`;
-  msg += `📌 **Chủ đề:** **${meeting.title}**\n`;
-  msg += `⏰ **Thời gian:** \`${meeting.meeting_time}\`\n`;
+  msg += `📌 <b>Chủ đề:</b> <b>${escapeHtml(meeting.title)}</b>\n`;
+  msg += `⏰ <b>Thời gian:</b> <code>${escapeHtml(meeting.meeting_time)}</code>\n`;
   if (meeting.location) {
-    msg += `📍 **Địa điểm / Link:** ${meeting.location}\n`;
+    msg += `📍 <b>Địa điểm / Link:</b> ${escapeHtml(meeting.location)}\n`;
   }
-  msg += `👥 **Đối tượng:** ${targetDisplay}\n`;
-  msg += `👤 **Người chủ trì:** ${meeting.creator_name || 'Ban Giám Đốc'}\n`;
+  msg += `👥 <b>Đối tượng:</b> ${targetDisplay}\n`;
+  msg += `👤 <b>Người chủ trì:</b> ${escapeHtml(meeting.creator_name) || 'Ban Giám Đốc'}\n`;
 
   if (meeting.minutes) {
-    msg += `📝 **Biên bản:** _Đã có ghi chép_ (bấm [📑 Xem Nội Dung] để đọc)\n`;
+    msg += `📝 <b>Biên bản:</b> <i>Đã có ghi chép</i> (bấm [📑 Xem Biên Bản] để đọc)\n`;
   } else {
-    msg += `📝 **Biên bản:** _Chưa có (Thư ký bấm [✍️ Nhập Nội Dung] để ghi)_\n`;
+    msg += `📝 <b>Biên bản:</b> <i>Chưa có (Thư ký bấm [✍️ Nhập Biên Bản] để ghi)</i>\n`;
   }
 
-  msg += `\n📊 **Điểm danh (${participants.confirmed.length} tham gia | ${participants.declined.length} vắng):**\n`;
+  msg += `\n📊 <b>Điểm danh (${participants.confirmed.length} tham gia | ${participants.declined.length} vắng):</b>\n`;
   if (participants.confirmed.length > 0) {
-    msg += `• Có mặt: ${participants.confirmed.map(p => p.username ? `@${p.username.replace(/_/g, '\\_')}` : p.full_name).join(', ')}\n`;
+    msg += `• Có mặt: ${participants.confirmed.map(p => p.username ? `@${p.username}` : escapeHtml(p.full_name)).join(', ')}\n`;
   }
   if (participants.declined.length > 0) {
-    msg += `• Báo vắng: ${participants.declined.map(p => p.username ? `@${p.username.replace(/_/g, '\\_')}` : p.full_name).join(', ')}\n`;
+    msg += `• Báo vắng: ${participants.declined.map(p => p.username ? `@${p.username}` : escapeHtml(p.full_name)).join(', ')}\n`;
   }
 
   return msg;

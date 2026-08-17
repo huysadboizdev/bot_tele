@@ -1,4 +1,4 @@
-import { Context } from 'grammy';
+import { Context, InlineKeyboard } from 'grammy';
 import { MeetingService, Meeting } from './service';
 import {
   formatMeetingMessage,
@@ -480,11 +480,43 @@ export class MeetingHandlers {
       }
       await ctx.answerCallbackQuery();
       await ctx.reply(
-        `🔍 **TRA CỨU CUỘC HỌP THEO NGÀY TÙY Ý:**\n\n` +
-        `👉 Vui lòng gửi tin nhắn chứa ngày bạn muốn xem theo định dạng: \`YYYY-MM-DD\` hoặc \`DD/MM/YYYY\`\n` +
-        `💡 _Ví dụ:_ \`2026-08-16\` hoặc \`16/08/2026\``,
-        { parse_mode: 'Markdown' }
+        `🔍 <b>TRA CỨU CUỘC HỌP THEO NGÀY TÙY Ý:</b>\n\n` +
+        `👉 Vui lòng gửi tin nhắn chứa ngày bạn muốn xem theo định dạng: <code>YYYY-MM-DD</code> hoặc <code>DD/MM/YYYY</code>\n` +
+        `💡 <i>Ví dụ:</i> <code>2026-08-16</code> hoặc <code>16/08/2026</code>`,
+        { parse_mode: 'HTML' }
       );
+    }
+
+    // 8. Xác nhận Hủy cuộc họp
+    else if (action === 'del_confirm') {
+      const isAdmin = UserService.isAdmin(userId);
+      if (!isAdmin) {
+        await ctx.answerCallbackQuery({ text: '⚠️ Chỉ Quản trị viên mới có quyền hủy cuộc họp.', show_alert: true });
+        return;
+      }
+
+      const confirmKb = new InlineKeyboard()
+        .text('⚠️ Xác Nhận Hủy Cuộc Họp', `meeting:delete_confirmed:${meetingId}`)
+        .text('Quay Lại', `meeting:confirm:${meetingId}`);
+
+      await ctx.answerCallbackQuery();
+      await ctx.editMessageReplyMarkup({ reply_markup: confirmKb });
+    }
+
+    // 9. Đã xác nhận Hủy cuộc họp
+    else if (action === 'delete_confirmed') {
+      const isAdmin = UserService.isAdmin(userId);
+      if (!isAdmin) {
+        await ctx.answerCallbackQuery({ text: '⚠️ Bạn không có quyền hủy.', show_alert: true });
+        return;
+      }
+
+      const meeting = MeetingService.getById(meetingId);
+      MeetingService.delete(meetingId);
+      await ctx.answerCallbackQuery({ text: 'Đã hủy cuộc họp thành công!' });
+      await ctx.editMessageText(`🗑️ <b>Cuộc họp #${meetingId} ("${meeting?.title || ''}") đã được hủy bởi Admin.</b>`, {
+        parse_mode: 'HTML',
+      });
     }
   }
 
